@@ -1,0 +1,255 @@
+/* @license
+ * Copyright 2019 Google LLC. All Rights Reserved.
+ * Licensed under the Apache License, Version 2.0 (the 'License');
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an 'AS IS' BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+import '../renderer-gate.js';
+import { expect } from 'chai';
+import { strFromU8, unzipSync } from 'three/examples/jsm/libs/fflate.module.js';
+import { IS_ANDROID, IS_IOS } from '../../constants.js';
+import { $openIOSARQuickLook, $openSceneViewer } from '../../features/ar.js';
+import { $progressTracker, $scene } from '../../model-viewer-base.js';
+import { ModelViewerElement } from '../../model-viewer.js';
+import { waitForEvent } from '../../utilities.js';
+import { assetPath, rafPasses, spy } from '../helpers.js';
+suite('AR', () => {
+    let element;
+    let intentUrls;
+    let restoreAnchorClick;
+    setup(() => {
+        element = new ModelViewerElement();
+        document.body.insertBefore(element, document.body.firstChild);
+        intentUrls = [];
+        restoreAnchorClick = spy(HTMLAnchorElement.prototype, 'click', {
+            value: function () {
+                intentUrls.push(this.href);
+            }
+        });
+    });
+    teardown(() => {
+        if (element.parentNode != null) {
+            element.parentNode.removeChild(element);
+        }
+        restoreAnchorClick();
+    });
+    suite('openSceneViewer', () => {
+        test('preserves query parameters in model URLs', () => {
+            element.src = 'https://example.com/model.gltf?token=foo';
+            element.alt = 'Example model';
+            element[$openSceneViewer]();
+            expect(intentUrls.length).to.be.equal(1);
+            const search = new URLSearchParams(new URL(intentUrls[0]).search);
+            expect(search.get('token')).to.equal('foo');
+        });
+        test('keeps title and link when supplied', () => {
+            element.src =
+                'https://example.com/model.gltf?link=http://linkme.com&title=bar';
+            element.alt = 'alt';
+            element[$openSceneViewer]();
+            expect(intentUrls.length).to.be.equal(1);
+            const search = new URLSearchParams(new URL(intentUrls[0]).search);
+            expect(search.get('title')).to.equal('bar');
+            expect(search.get('link')).to.equal('http://linkme.com/');
+        });
+        test('sets sound and link to absolute URLs', () => {
+            element.src =
+                'https://example.com/model.gltf?link=foo.html&sound=bar.ogg';
+            element.alt = 'alt';
+            element[$openSceneViewer]();
+            expect(intentUrls.length).to.be.equal(1);
+            const search = new URLSearchParams(new URL(intentUrls[0]).search);
+            // Tests run in different locations
+            expect(search.get('sound')).to.contain('http://');
+            expect(search.get('sound')).to.contain('/bar.ogg');
+            expect(search.get('link')).to.contain('http://');
+            expect(search.get('link')).to.contain('/foo.html');
+        });
+        test('strips hash params from SceneViewer model src', () => {
+            element.src =
+                'https://example.com/model.gltf#applePayButtonType=plain&checkoutTitle=TitleText';
+            element.alt = 'alt';
+            element[$openSceneViewer]();
+            expect(intentUrls.length).to.be.equal(1);
+            const search = new URLSearchParams(new URL(intentUrls[0]).search);
+            const file = new URL(search.get('file'));
+            expect(file.hash).to.equal('');
+        });
+        test('strips hash params but preserves query params', () => {
+            element.src =
+                'https://example.com/model.gltf?link=http://linkme.com&title=bar#applePayButtonType=plain&checkoutTitle=TitleText';
+            element.alt = 'alt';
+            element[$openSceneViewer]();
+            expect(intentUrls.length).to.be.equal(1);
+            const search = new URLSearchParams(new URL(intentUrls[0]).search);
+            const file = new URL(search.get('file'));
+            expect(file.hash).to.equal('');
+            expect(search.get('title')).to.equal('bar');
+            expect(search.get('link')).to.equal('http://linkme.com/');
+        });
+        test('gracefully degrades to base model URI for multi-model scenes instead of crashing via blob:', async () => {
+            element.src = assetPath('models/cube.gltf');
+            const extra = document.createElement('extra-model');
+            extra.setAttribute('src', assetPath('models/Horse.glb'));
+            element.appendChild(extra);
+            await waitForEvent(element, 'load');
+            element[$openSceneViewer]();
+            expect(intentUrls.length).to.be.equal(1);
+            const search = new URLSearchParams(new URL(intentUrls[0]).search);
+            const file = new URL(search.get('file'));
+            // It must strictly equal the base model URL and NOT a blob URL
+            expect(file.protocol).to.not.equal('blob:');
+            expect(file.pathname).to.include('cube.gltf');
+        });
+    });
+    suite('openQuickLook', () => {
+        test('restores the viewer after video texture USDZ conversion fails', async () => {
+            var _a, _b;
+            element.shadowIntensity = 1;
+            element.src = assetPath('models/cube.gltf');
+            await waitForEvent(element, 'load');
+            const texture = element.createVideoTexture(assetPath('models/lottie-logo.mp4'));
+            element.model.materials[0]
+                .pbrMetallicRoughness.baseColorTexture.setTexture(texture);
+            const scene = element[$scene];
+            const parent = scene.models[0].parent;
+            const shadowVisible = (_a = scene.shadow) === null || _a === void 0 ? void 0 : _a.visible;
+            expect(scene.shadow).to.not.be.null;
+            expect(shadowVisible).to.be.true;
+            const button = element.shadowRoot.querySelector('.ar-button');
+            button.classList.add('enabled');
+            const progress = element[$progressTracker];
+            expect(progress.ongoingActivityCount).to.equal(0);
+            let thrown;
+            try {
+                await element[$openIOSARQuickLook]();
+            }
+            catch (error) {
+                thrown = error;
+            }
+            expect(thrown).to.be.instanceOf(Error);
+            expect(thrown.message)
+                .to.include('No valid image data found');
+            expect([
+                scene.models[0].parent === parent,
+                ((_b = scene.shadow) === null || _b === void 0 ? void 0 : _b.visible) === shadowVisible,
+                progress.ongoingActivityCount === 0,
+                button.classList.contains('enabled'),
+            ]).to.deep.equal([true, true, true, true]);
+        });
+        test('sets hash for fixed scale', () => {
+            element.src = 'https://example.com/model.gltf';
+            element.iosSrc = 'https://example.com/model.usdz';
+            element.arScale = 'fixed';
+            element[$openIOSARQuickLook]();
+            expect(intentUrls.length).to.be.equal(1);
+            const url = new URL(intentUrls[0]);
+            expect(url.pathname).equal('/model.usdz');
+            expect(url.hash).to.equal('#allowsContentScaling=0');
+        });
+        test('keeps original hash too', () => {
+            element.src = 'https://example.com/model.gltf';
+            element.iosSrc =
+                'https://example.com/model.usdz#custom=path-to-banner.html';
+            element.arScale = 'fixed';
+            element[$openIOSARQuickLook]();
+            expect(intentUrls.length).to.be.equal(1);
+            const url = new URL(intentUrls[0]);
+            expect(url.pathname).equal('/model.usdz');
+            expect(url.hash).to.equal('#custom=path-to-banner.html&allowsContentScaling=0');
+        });
+        test('replicate src hash to usdz blob url', async () => {
+            element.src =
+                assetPath('models/cube.gltf') + '#custom=path-to-banner.html';
+            element.arModes = 'webxr scene-viewer quick-look';
+            await element[$openIOSARQuickLook]();
+            expect(intentUrls.length).to.be.equal(1);
+            const url = new URL(intentUrls[0]);
+            expect(url.protocol).to.equal('blob:');
+            expect(url.hash).to.equal('#custom=path-to-banner.html');
+        });
+        test('replicate src hash to usdz blob and set hash for fixed scale', async () => {
+            element.src =
+                assetPath('models/cube.gltf') + '#custom=path-to-banner.html';
+            element.arModes = 'webxr scene-viewer quick-look';
+            element.arScale = 'fixed';
+            await element[$openIOSARQuickLook]();
+            expect(intentUrls.length).to.be.equal(1);
+            const url = new URL(intentUrls[0]);
+            expect(url.protocol).to.equal('blob:');
+            expect(url.hash).to.equal('#custom=path-to-banner.html&allowsContentScaling=0');
+        });
+    });
+    suite('prepareUSDZ placement', () => {
+        const readUsda = async (url) => {
+            try {
+                const response = await fetch(url);
+                const files = unzipSync(new Uint8Array(await response.arrayBuffer()));
+                return strFromU8(files['model.usda']);
+            }
+            finally {
+                URL.revokeObjectURL(url);
+            }
+        };
+        const transforms = (usda) => usda.split('\n').filter(line => line.includes('matrix4d xformOp:transform'));
+        for (const src of [assetPath('models/cube.gltf'),
+            assetPath('models/offcenter-cube.gltf')]) {
+            test(`preserves transforms and viewer state for ${src}`, async () => {
+                element.src = src;
+                element.orientation = '15deg 25deg 35deg';
+                await waitForEvent(element, 'load');
+                await element.updateComplete;
+                const scene = element[$scene];
+                const model = scene.models[0];
+                const position = model.position.clone();
+                const quaternion = model.quaternion.clone();
+                const scale = model.scale.clone();
+                const targetPosition = scene.target.position.clone();
+                const floor = await readUsda(await element.prepareUSDZ());
+                expect(floor).to.include('preliminary:anchoring:type = "plane"');
+                expect(floor).to.include('preliminary:planeAnchoring:alignment = "horizontal"');
+                expect(transforms(floor)).not.to.be.empty;
+                element.arPlacement = 'wall';
+                element.resetTurntableRotation(0.7);
+                const wall = await readUsda(await element.prepareUSDZ());
+                expect(wall).not.to.include('preliminary:anchoring:type');
+                expect(wall).not.to.include('preliminary:planeAnchoring:alignment');
+                expect(transforms(wall)).to.deep.equal(transforms(floor));
+                element.resetTurntableRotation(1.3);
+                const rotatedWall = await readUsda(await element.prepareUSDZ());
+                expect(transforms(rotatedWall)).to.deep.equal(transforms(wall));
+                expect(element.turntableRotation).to.equal(1.3);
+                expect(model.parent).to.equal(scene.target);
+                expect(model.position.equals(position)).to.be.true;
+                expect(model.quaternion.equals(quaternion)).to.be.true;
+                expect(model.scale.equals(scale)).to.be.true;
+                expect(scene.target.position.equals(targetPosition)).to.be.true;
+            });
+        }
+    });
+    suite('shows the AR button', () => {
+        setup(async () => {
+            element.ar = true;
+            element.src = assetPath('models/Astronaut.glb');
+            await waitForEvent(element, 'poster-dismissed');
+        });
+        test('on Android', () => {
+            expect(element.canActivateAR).to.be.equal(IS_ANDROID);
+        });
+        // This only works on a physical iOS device, not an emulated one.
+        test.skip('with an ios-src on iOS', async () => {
+            element.iosSrc = assetPath('models/Astronaut.usdz');
+            await rafPasses();
+            expect(element.canActivateAR).to.be.equal(IS_ANDROID || IS_IOS);
+        });
+    });
+});
+//# sourceMappingURL=ar-spec.js.map
