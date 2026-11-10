@@ -75,9 +75,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Determine if Push is Enabled
+      - name: Determine if Push is Enabled & Normalize Username
         id: push_eval
         run: |
+          NORMALIZED_USER=$(echo "${{ env.DOCKERHUB_USER }}" | tr '[:upper:]' '[:lower:]' | xargs)
+          echo "dockerhub_user=${NORMALIZED_USER}" >> $GITHUB_OUTPUT
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "should_push=false" >> $GITHUB_OUTPUT
           elif [ "${{ secrets.DOCKERHUB_USERNAME }}" = "" ] || [ "${{ secrets.DOCKERHUB_TOKEN }}" = "" ]; then
@@ -93,14 +95,14 @@ jobs:
         if: steps.push_eval.outputs.should_push == 'true'
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          username: ${{ steps.push_eval.outputs.dockerhub_user }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Extract Docker Metadata (Tags & Labels)
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.DOCKERHUB_USER }}/${{ env.IMAGE_NAME }}
+          images: ${{ steps.push_eval.outputs.dockerhub_user }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable=${{ github.event_name != 'pull_request' }}
             type=raw,value=${{ github.event.inputs.custom_tag }},enable=${{ github.event.inputs.custom_tag != '' }}
@@ -115,6 +117,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: ${{ steps.push_eval.outputs.should_push == 'true' }}
+          provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
