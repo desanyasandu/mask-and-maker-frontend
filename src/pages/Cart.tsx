@@ -1,7 +1,9 @@
 import { Minus, Package, Plus, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { masks } from "@/lib/mock/data";
+import { api, getCachedMask } from "@/lib/mock/api";
 import { usePageMeta } from "@/lib/meta";
+import type { Mask } from "@/lib/types";
 import { formatMoney } from "@/lib/utils";
 import { useApp } from "@/store/app";
 import { EmptyState } from "@/components/ui/kit";
@@ -18,10 +20,15 @@ export default function Cart() {
   const clearCart = useApp((s) => s.clearCart);
   const currency = useApp((s) => s.currency);
   const toast = useApp((s) => s.toast);
+  const [masksList, setMasksList] = useState<Mask[]>([]);
+
+  useEffect(() => {
+    api.listMasks().then(setMasksList).catch(() => {});
+  }, []);
 
   const items = cart
-    .map((i) => ({ ...i, mask: masks.find((m) => m.slug === i.slug) }))
-    .filter((i): i is typeof i & { mask: (typeof masks)[number] } => Boolean(i.mask));
+    .map((i) => ({ ...i, mask: masksList.find((m) => m.slug === i.slug) ?? getCachedMask(i.slug) }))
+    .filter((i): i is typeof i & { mask: Mask } => Boolean(i.mask));
 
   const subtotal = items.reduce((sum, i) => sum + i.mask.priceLKR * i.qty, 0);
 

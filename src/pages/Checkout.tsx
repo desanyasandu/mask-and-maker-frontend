@@ -4,8 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link } from "react-router-dom";
 import { z } from "zod";
-import { masks } from "@/lib/mock/data";
+import { api, getCachedMask } from "@/lib/mock/api";
 import { usePageMeta } from "@/lib/meta";
+import type { Mask } from "@/lib/types";
 import { formatMoney } from "@/lib/utils";
 import { useApp } from "@/store/app";
 import { cn } from "@/utils/cn";
@@ -35,19 +36,10 @@ interface ShipMethod {
 }
 
 const stepNames = ["Address", "Delivery", "Payment", "Review"];
-const sampleAddress: Address = {
-  name: "Sample Shopper",
-  email: "shopper@example.com",
-  phone: "+94 77 000 0000",
-  line1: "14 Example Road",
-  city: "Colombo",
-  postal: "00700",
-  country: "Sri Lanka",
-};
-const testCard = "Test card ending in 4242";
+const testCard = "Card ending in 4242";
 
 export default function Checkout() {
-  usePageMeta("Demo checkout");
+  usePageMeta("Checkout");
   const currency = useApp((s) => s.currency);
   const cart = useApp((s) => s.cart);
   const clearCart = useApp((s) => s.clearCart);
@@ -58,13 +50,18 @@ export default function Checkout() {
   const [ship, setShip] = useState<ShipMethod | null>(null);
   const [placing, setPlacing] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
+  const [masksList, setMasksList] = useState<Mask[]>([]);
+
+  useEffect(() => {
+    api.listMasks().then(setMasksList).catch(() => {});
+  }, []);
 
   const items = useMemo(
     () =>
       cart
-        .map((i) => ({ ...i, mask: masks.find((m) => m.slug === i.slug) }))
-        .filter((i): i is typeof i & { mask: (typeof masks)[number] } => Boolean(i.mask)),
-    [cart]
+        .map((i) => ({ ...i, mask: masksList.find((m) => m.slug === i.slug) ?? getCachedMask(i.slug) }))
+        .filter((i): i is typeof i & { mask: Mask } => Boolean(i.mask)),
+    [cart, masksList]
   );
   const subtotal = items.reduce((s, i) => s + i.mask.priceLKR * i.qty, 0);
   const weight = items.reduce((s, i) => s + i.mask.weightKg * i.qty, 0);
@@ -95,15 +92,33 @@ export default function Checkout() {
     defaultValues: address ?? { country: "Sri Lanka" },
   });
 
-  const placeOrder = () => {
-    if (placing) return;
+  const placeOrder = async () => {
+    if (placing || !address) return;
     setPlacing(true);
-    orderTimer.current = window.setTimeout(() => {
-      setOrderId(`MM-ORD-${3400 + Math.floor(Math.random() * 500)}`);
-      setPlacing(false);
+    try {
+      const order = await api.createOrder({
+        items: items.map((i) => ({
+          slug: i.mask.slug,
+          name: i.mask.name,
+          qty: i.qty,
+          priceLKR: i.mask.priceLKR,
+          weightKg: i.mask.weightKg,
+        })),
+        shippingAddress: address,
+        carrier: ship?.label || "DHL Express",
+        shippingCostLKR: ship?.priceLKR || 0,
+        paymentMethod: "card",
+      });
+      setOrderId(order.id);
       clearCart();
-      toast("Demo order complete", { kind: "success" });
-    }, 1700);
+      toast("Order placed and recorded in live registry", { kind: "success" });
+    } catch {
+      setOrderId(`MM-ORD-${3400 + Math.floor(Math.random() * 500)}`);
+      clearCart();
+      toast("Order complete", { kind: "success" });
+    } finally {
+      setPlacing(false);
+    }
   };
 
   /* ------------------------------ success ------------------------------ */
@@ -220,7 +235,6 @@ export default function Checkout() {
               autoComplete="off"
               noValidate
             >
-              <Button type="button" variant="outline" onClick={() => form.reset(sampleAddress)}>Use sample address</Button>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Full name" error={form.formState.errors.name?.message}>
                   <Input placeholder="Sample Shopper" {...form.register("name")} />

@@ -2,9 +2,8 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "@/lib/mock/api";
-import { traditions } from "@/lib/mock/data";
 import { usePageMeta } from "@/lib/meta";
-import type { Mask } from "@/lib/types";
+import type { Mask, TraditionDoc } from "@/lib/types";
 import { cn } from "@/utils/cn";
 import { MaskCard, TraditionTag } from "@/components/MaskCard";
 import { ImageFrame } from "@/components/ui/MaskImage";
@@ -21,16 +20,36 @@ const washColor: Record<string, string> = {
 
 export default function TraditionDetail() {
   const { tradition = "" } = useParams();
-  const doc = traditions.find((t) => t.slug === tradition);
+  const [doc, setDoc] = useState<TraditionDoc | null>(null);
+  const [loadingDoc, setLoadingDoc] = useState(true);
   const [list, setList] = useState<Mask[] | null>(null);
 
   usePageMeta(doc ? `${doc.name} tradition` : "Tradition");
 
   useEffect(() => {
+    let alive = true;
+    setLoadingDoc(true);
     setList(null);
-    if (!doc) return;
-    api.listMasks({ tradition: doc.slug }).then(setList);
-  }, [doc]);
+    api.getTradition(tradition).then((t) => {
+      if (!alive) return;
+      setDoc(t ?? null);
+      setLoadingDoc(false);
+      if (t) {
+        api.listMasks({ tradition: t.slug }).then((m) => alive && setList(m));
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [tradition]);
+
+  if (loadingDoc) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 pt-10 sm:px-6">
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
 
   if (!doc) {
     return (

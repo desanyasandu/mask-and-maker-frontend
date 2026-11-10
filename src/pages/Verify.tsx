@@ -1,36 +1,59 @@
-import { BadgeCheck, Fingerprint, Landmark, Loader2, Lock, ScanLine, Search, ShieldCheck } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { BadgeCheck, Copy, ExternalLink, Fingerprint, Landmark, Loader2, Lock, Radio, ScanLine, Search, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "@/lib/mock/api";
-import { artisans } from "@/lib/mock/data";
-import { masks } from "@/lib/mock/data";
 import { usePageMeta } from "@/lib/meta";
-import type { Certificate } from "@/lib/types";
+import type { Artisan, Certificate, Mask, VerifyRegistryStats } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
 import { useApp } from "@/store/app";
+import { useAuth } from "@/store/auth";
 import { cn } from "@/utils/cn";
 import { Button, EmptyState } from "@/components/ui/kit";
-import { MaskArtwork } from "@/components/ui/MaskImage";
+import { ImageFrame, MaskArtwork } from "@/components/ui/MaskImage";
 import { BorderBeam, VerifiedSeal } from "@/components/ui/surfaces";
 import { ProvenanceTimeline, type ProvStep } from "@/components/ui/ProvenanceTimeline";
-import { ImageFrame } from "@/components/ui/MaskImage";
 import { photos } from "@/lib/photos";
 
 const checkpoints = [
-  { icon: Landmark, label: "Checking the registry", done: "In the registry" },
-  { icon: Fingerprint, label: "Matching the artisan signature", done: "Signature matches the maker" },
-  { icon: ShieldCheck, label: "Confirming the certificate", done: "Certificate intact" },
+  { icon: Landmark, label: "Checking the Polygon registry", done: "On-chain token verified in registry" },
+  { icon: Fingerprint, label: "Matching the artisan cryptographic signature", done: "ECDSA signature matches the maker" },
+  { icon: ShieldCheck, label: "Confirming NTAG424 DNA & ownership state", done: "Physical tag & certificate intact" },
 ];
 
 export default function Verify() {
   const { certId } = useParams();
   const navigate = useNavigate();
   const [code, setCode] = useState("");
+  const [stats, setStats] = useState<VerifyRegistryStats | null>(null);
+  const [scanningNfc, setScanningNfc] = useState(false);
+  const toast = useApp((s) => s.toast);
   usePageMeta("Verify a certificate", "Scan the tag on the back of your mask — the registry answers in seconds.");
+
+  useEffect(() => {
+    if (!certId) {
+      api.getVerifyStats().then(setStats).catch(() => {});
+    }
+  }, [certId]);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (code.trim()) navigate(`/verify/${encodeURIComponent(code.trim().toUpperCase())}`);
+  };
+
+  const simulateNfcScan = async (targetCert = "MM-2024-0117") => {
+    if (scanningNfc) return;
+    setScanningNfc(true);
+    try {
+      const auth = await api.authenticateNfc(targetCert);
+      if (auth?.authenticated) {
+        toast(`NFC Tag ${auth.uid} authenticated`, {
+          description: `NTAG424 DNA hardware tap #${auth.tapCount} verified on-chain.`,
+          kind: "success",
+        });
+      }
+    } catch {}
+    setScanningNfc(false);
+    navigate(`/verify/${targetCert}`);
   };
 
   if (certId) return <VerifyRun certId={certId} />;
@@ -75,6 +98,9 @@ export default function Verify() {
             <button onClick={() => navigate("/verify/MM-2024-0117")} className="rounded-md border border-line bg-s1 px-2 py-1 font-mono text-[11px] text-gold transition-colors hover:border-gold/40 tnum">
               MM-2024-0117
             </button>
+            <button onClick={() => navigate("/verify/MM-2025-0338")} className="rounded-md border border-line bg-s1 px-2 py-1 font-mono text-[11px] text-gold transition-colors hover:border-gold/40 tnum">
+              MM-2025-0338
+            </button>
             <button onClick={() => navigate("/verify/MM-2023-0845")} className="rounded-md border border-line bg-s1 px-2 py-1 font-mono text-[11px] text-gold transition-colors hover:border-gold/40 tnum">
               MM-2023-0845
             </button>
@@ -86,9 +112,9 @@ export default function Verify() {
               <li key={c.label}>
                 <p className="font-display text-lg text-ink">{c.label}</p>
                 <p className="mt-1 max-w-md text-[14px] leading-relaxed text-ink2">
-                  {c.icon === Landmark && "The certificate ID is looked up in the public registry — minted once, never reissued."}
-                  {c.icon === Fingerprint && "The maker’s signed stamp on the certificate is checked against the workshop’s records."}
-                  {c.icon === ShieldCheck && "Ownership state is confirmed: unclaimed, or claimed by the registered keeper."}
+                  {c.icon === Landmark && "The certificate ID is looked up in the Polygon public registry — minted once, never reissued."}
+                  {c.icon === Fingerprint && "The maker’s cryptographic stamp on the certificate is checked against the workshop’s records."}
+                  {c.icon === ShieldCheck && "NTAG424 DNA hardware tap counter and ownership state are confirmed: unclaimed, or claimed by the registered keeper."}
                 </p>
               </li>
             ))}
@@ -105,14 +131,21 @@ export default function Verify() {
             Tap the tag with an NFC phone, or point any camera at the printed QR. Both routes end on this page with the
             certificate filled in for you.
           </p>
-          <Button variant="outline" className="mt-6" onClick={() => navigate("/verify/MM-2024-0117")}>
-            <ScanLine className="size-4 text-gold" />
-            Simulate a tag scan
+          <Button variant="outline" className="mt-6" disabled={scanningNfc} onClick={() => simulateNfcScan("MM-2024-0117")}>
+            {scanningNfc ? <Loader2 className="size-4 animate-spin text-gold" /> : <ScanLine className="size-4 text-gold" />}
+            {scanningNfc ? "Authenticating NTAG424 DNA…" : "Simulate a tag scan"}
           </Button>
           <div className="mt-8 border-t border-line pt-5">
             <p className="text-sm leading-relaxed text-ink3">
-              191 certificates live. Counterfeit reports are answered within 48 hours.
+              {stats
+                ? `${stats.stats.totalCertificates} certificates live on ${stats.network} · ${stats.stats.claimedCount} claimed · ${stats.stats.totalNfcTaps} NFC hardware taps verified.`
+                : "18 certificates live on Polygon PoS. Counterfeit reports are answered within 48 hours."}
             </p>
+            {stats?.contract && (
+              <p className="mt-1.5 font-mono text-[11px] text-ink3 tnum">
+                Registry contract: <span className="text-gold">{stats.contract}</span>
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -125,19 +158,45 @@ export default function Verify() {
 function VerifyRun({ certId }: { certId: string }) {
   const [stage, setStage] = useState(0);
   const [result, setResult] = useState<{ cert: Certificate | null; found: boolean } | null>(null);
+  const [mask, setMask] = useState<Mask | undefined>(undefined);
+  const [artisan, setArtisan] = useState<Artisan | undefined>(undefined);
   const [claimed, setClaimed] = useState(false);
   const [claiming, setClaiming] = useState(false);
+  const [ownerInput, setOwnerInput] = useState("");
+  const [walletInput, setWalletInput] = useState("");
+  const [tapping, setTapping] = useState(false);
   const toast = useApp((s) => s.toast);
+  const user = useAuth((s) => s.user);
   usePageMeta(`Certificate ${certId}`);
+
+  useEffect(() => {
+    if (user?.name && !ownerInput) {
+      setOwnerInput(user.name);
+    }
+  }, [user?.name, ownerInput]);
 
   useEffect(() => {
     let alive = true;
     setStage(0);
     setResult(null);
+    setMask(undefined);
+    setArtisan(undefined);
     setClaimed(false);
     setClaiming(false);
     /* a failed lookup must still end the animation, not spin forever */
-    const promise = api.verifyCertificate(certId).catch(() => ({ cert: null, found: false }));
+    const promise = api.verifyCertificate(certId).then(async (r) => {
+      if (r.cert) {
+        const [m, a] = await Promise.all([
+          api.getMask(r.cert.maskSlug),
+          api.getArtisan(r.cert.artisanSlug),
+        ]);
+        if (alive) {
+          setMask(m);
+          setArtisan(a);
+        }
+      }
+      return r;
+    }).catch(() => ({ cert: null, found: false }));
     const timers = checkpoints.map((_, i) => window.setTimeout(() => alive && setStage(i + 1), 620 * (i + 1)));
     const doneTimer = window.setTimeout(async () => {
       const r = await promise;
@@ -154,29 +213,61 @@ function VerifyRun({ certId }: { certId: string }) {
   }, [certId]);
 
   const running = stage <= checkpoints.length;
-  const mask = result?.cert ? masks.find((m) => m.slug === result.cert!.maskSlug) : undefined;
-  const artisan = result?.cert ? artisans.find((a) => a.slug === result.cert!.artisanSlug) : undefined;
   const isClaimed = claimed || result?.cert?.status === "claimed";
 
-  const claimTimer = useRef<number | undefined>(undefined);
-  useEffect(() => () => window.clearTimeout(claimTimer.current), [certId]);
-
-  const claim = () => {
+  const claim = async () => {
     if (claiming) return;
+    const keeperName = ownerInput.trim() || user?.name || "Registered Keeper";
     setClaiming(true);
-    claimTimer.current = window.setTimeout(() => {
-      setClaiming(false);
+    try {
+      const updated = await api.claimCertificate(certId, keeperName, walletInput.trim() || undefined);
+      if (updated) {
+        setResult((prev) => ({
+          found: true,
+          cert: {
+            ...prev?.cert,
+            ...updated,
+            verificationStatus: prev?.cert?.verificationStatus,
+          },
+        }));
+      }
       setClaimed(true);
-      toast("Digital twin claimed", { description: `${mask?.name} now answers to your name on the registry.`, kind: "success" });
-    }, 1500);
+      toast("Digital twin claimed on-chain", {
+        description: `${mask?.name ?? certId} is now bound to ${keeperName} on the Polygon registry.`,
+        kind: "success",
+      });
+    } catch {
+      toast("Could not claim twin", { description: "Please check your connection or certificate status.", kind: "error" });
+    } finally {
+      setClaiming(false);
+    }
   };
+
+  const handleNfcTap = async () => {
+    if (tapping || !result?.cert) return;
+    setTapping(true);
+    try {
+      const auth = await api.authenticateNfc(result.cert.id);
+      if (auth?.cert) {
+        setResult({ found: true, cert: auth.cert });
+        toast(`NFC Tag ${auth.uid} tapped`, {
+          description: `Hardware counter incremented to #${auth.tapCount} (${auth.cert.nfcTag?.standard || "NTAG424_DNA"}).`,
+          kind: "success",
+        });
+      }
+    } finally {
+      setTapping(false);
+    }
+  };
+
+  const cert = result?.cert;
 
   return (
     <div className="mx-auto max-w-5xl px-4 pt-12 sm:px-6">
       {/* checking sequence — aria-live for screen readers */}
       <div className="edge mx-auto max-w-xl rounded-lg bg-s1 p-6" aria-live="polite">
         <p className="mb-4 flex items-center justify-between text-[13px] font-medium text-ink2">
-          <span>Verifying against the registry</span>
+          <span>Verifying against the Polygon registry</span>
           <span className="font-mono text-[12px] text-gold tnum">{certId}</span>
         </p>
         <ol className="space-y-3">
@@ -204,7 +295,7 @@ function VerifyRun({ certId }: { certId: string }) {
         {running && <div className="skel mt-4 h-[3px] rounded-full" aria-hidden="true" />}
       </div>
 
-      {/* result */}
+      {/* result: not found */}
       {result && !result.found && (
         <div className="mt-10">
           <EmptyState
@@ -215,29 +306,51 @@ function VerifyRun({ certId }: { certId: string }) {
             <Link to="/verify" className="inline-flex h-10 items-center rounded-lg border border-line bg-s2 px-4 text-sm font-medium text-ink transition-colors hover:bg-s3">
               Check another code
             </Link>
-            <Button variant="ghost" onClick={() => toast("Report noted", { description: "The heritage desk replies within 48 hours.", kind: "success" })}>
+            <Button
+              variant="ghost"
+              onClick={async () => {
+                await api.reportCertificate(certId, "Unrecognized certificate code reported via web verifier");
+                toast("Report noted", { description: "The heritage desk replies within 48 hours.", kind: "success" });
+              }}
+            >
               Report this tag
             </Button>
           </EmptyState>
         </div>
       )}
 
-      {result?.cert && mask && artisan && (
+      {/* result: verified */}
+      {cert && (
         <div className="mt-10 grid items-start gap-8 lg:grid-cols-[340px_1fr]">
           <div>
-            <MaskArtwork mask={mask} ratio="aspect-[4/5]" eager />
-            <p className="mt-3 text-center text-[13px] text-ink3">
-              {mask.region} · carved {mask.year}
-            </p>
+            {mask ? (
+              <>
+                <MaskArtwork mask={mask} ratio="aspect-[4/5]" eager />
+                <p className="mt-3 text-center text-[13px] text-ink3">
+                  {mask.region} · carved {mask.year}
+                </p>
+              </>
+            ) : (
+              <div className="edge rounded-lg bg-s2 p-6 text-center">
+                <VerifiedSeal size="lg" label="Verified on-chain" />
+                <p className="mt-3 font-mono text-xs text-gold">{cert.id}</p>
+              </div>
+            )}
           </div>
 
           <div>
             <div className="gold-frame relative rounded-lg bg-s2 p-7">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <h1 className="mt-2 font-display text-[30px] leading-tight text-ink">{mask.name}</h1>
+                  <h1 className="mt-2 font-display text-[30px] leading-tight text-ink">{mask?.name ?? cert.maskSlug}</h1>
                   <p className="mt-1 text-sm text-ink2">
-                    by {artisan.name} · <span className="font-sinhala">{artisan.sinhalaName}</span>
+                    by {artisan?.name ?? cert.artisanSlug}
+                    {artisan?.sinhalaName && (
+                      <>
+                        {" "}
+                        · <span className="font-sinhala">{artisan.sinhalaName}</span>
+                      </>
+                    )}
                   </p>
                 </div>
                 <VerifiedSeal size="lg" label={isClaimed ? "Claimed & verified" : "Verified authentic"} />
@@ -245,15 +358,15 @@ function VerifyRun({ certId }: { certId: string }) {
 
               <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-2.5 border-t border-line pt-5 text-[13px] sm:grid-cols-3">
                 {[
-                  ["Certificate", result.cert.id],
-                  ["Minted", formatDate(result.cert.mintedAt)],
-                  ["Chain", result.cert.chain],
-                  ["Timber", mask.wood.replace(" (Strychnos nux-vomica)", "")],
-                  ["Pigments", mask.dyes[0] ?? "Natural mineral"],
-                  ["Keeper", isClaimed ? claimed ? "You — just now" : result.cert.owner ?? "—" : "Unclaimed"],
+                  ["Certificate", cert.id],
+                  ["Minted", formatDate(cert.mintedAt)],
+                  ["Chain", `${cert.chain} PoS (Amoy)`],
+                  ["Timber", mask ? mask.wood.replace(" (Strychnos nux-vomica)", "") : "Kaduru"],
+                  ["Pigments", mask?.dyes?.[0] ?? "Natural mineral"],
+                  ["Keeper", isClaimed ? cert.owner ?? (claimed ? ownerInput || "You — just now" : "—") : "Unclaimed"],
                 ].map(([k, v]) => (
                   <div key={k}>
-                    <dt className="text-[12.5px]  text-ink3">{k}</dt>
+                    <dt className="text-[12.5px] text-ink3">{k}</dt>
                     <dd className={cn("mt-0.5", k === "Chain" || k === "Minted" ? "font-mono text-ink2 tnum" : "text-ink2", k === "Certificate" && "font-mono text-gold tnum")}>{v}</dd>
                   </div>
                 ))}
@@ -269,48 +382,168 @@ function VerifyRun({ certId }: { certId: string }) {
                       <p className="text-sm font-semibold text-ink">{claimed ? "The twin is yours" : "Already with its keeper"}</p>
                       <p className="mt-1 text-sm leading-relaxed text-ink2">
                         {claimed
-                          ? "This certificate now names you. Ownership notes, care reminders and the collector's cut of future folklore releases travel with it."
-                          : `Claimed by ${result.cert.owner ?? "its keeper"}. Any resale re-registers from this certificate, not from gold words.`}
+                          ? `This certificate now names ${cert.owner || ownerInput || "you"}. Ownership notes, care reminders and the collector's cut of future folklore releases travel with it.`
+                          : `Claimed by ${cert.owner ?? "its keeper"}. Any resale re-registers from this certificate, not from gold words.`}
                       </p>
+                      {cert.ownerWallet && (
+                        <p className="mt-1.5 font-mono text-xs text-gold tnum">
+                          Wallet: {cert.ownerWallet}
+                        </p>
+                      )}
                     </div>
                   </div>
                 ) : (
-                  <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div>
-                      <p className="flex items-center gap-2 text-sm font-semibold text-ink">
-                        <Lock className="size-4 text-gold" aria-hidden="true" />
-                        Unclaimed twin
-                      </p>
-                      <p className="mt-1 max-w-xs text-[13px] leading-snug text-ink2">If this mask is yours, bind the certificate to your name. It's a one-minute act with a permanent effect.</p>
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <p className="flex items-center gap-2 text-sm font-semibold text-ink">
+                          <Lock className="size-4 text-gold" aria-hidden="true" />
+                          Unclaimed digital twin
+                        </p>
+                        <p className="mt-1 max-w-md text-[13px] leading-snug text-ink2">
+                          If this mask is yours, bind the certificate to your name and optional Polygon wallet. Claiming also releases the workshop's 61% escrow settlement.
+                        </p>
+                      </div>
+                      <Button onClick={claim} disabled={claiming}>
+                        {claiming ? <Loader2 className="size-4 animate-spin" /> : <BadgeCheck className="size-4" />}
+                        {claiming ? "Binding on-chain…" : "Claim digital twin"}
+                      </Button>
                     </div>
-                    <Button onClick={claim} disabled={claiming}>
-                      {claiming ? <Loader2 className="size-4 animate-spin" /> : <BadgeCheck className="size-4" />}
-                      {claiming ? "Binding…" : "Claim digital twin"}
-                    </Button>
+                    <div className="grid gap-3 pt-1 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-[11.5px] text-ink3">Keeper name</label>
+                        <input
+                          value={ownerInput}
+                          onChange={(e) => setOwnerInput(e.target.value)}
+                          placeholder="Your name for the registry"
+                          className="h-9 w-full rounded-md border border-line bg-s2 px-3 text-xs text-ink outline-none focus:border-gold/50"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[11.5px] text-ink3">Polygon wallet (optional)</label>
+                        <input
+                          value={walletInput}
+                          onChange={(e) => setWalletInput(e.target.value)}
+                          placeholder="0x..."
+                          className="h-9 w-full rounded-md border border-line bg-s2 px-3 font-mono text-xs text-ink outline-none focus:border-gold/50"
+                        />
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
             </div>
 
+            {/* Blockchain, IPFS & NFC Hardware Cryptographic Proofs */}
+            <div className="edge mt-6 rounded-lg bg-s1 p-6">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-4">
+                <div>
+                  <h2 className="text-sm font-semibold text-ink">Blockchain &amp; NFC Cryptographic Proof</h2>
+                  <p className="mt-0.5 text-xs text-ink3">Verified live against Polygon PoS &amp; NTAG424 DNA hardware registry</p>
+                </div>
+                {cert.nfcTag && (
+                  <Button size="sm" variant="outline" onClick={handleNfcTap} disabled={tapping}>
+                    {tapping ? <Loader2 className="size-3.5 animate-spin text-gold" /> : <Radio className="size-3.5 text-gold" />}
+                    Tap NFC ({cert.nfcTag.tapCount} taps)
+                  </Button>
+                )}
+              </div>
+
+              <dl className="mt-4 space-y-2.5 font-mono text-xs tnum">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <dt className="text-ink3">Smart Contract (Polygon)</dt>
+                  <dd className="flex items-center gap-2 text-ink2">
+                    <span className="truncate max-w-[220px] sm:max-w-xs">{cert.contractAddress || "0x38F087796d11eB40A5581B855Dcb2b3cEb78d3Fa"}</span>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard?.writeText(cert.contractAddress || "0x38F087796d11eB40A5581B855Dcb2b3cEb78d3Fa");
+                        toast("Contract address copied");
+                      }}
+                      className="text-gold hover:text-gold-strong"
+                      aria-label="Copy contract address"
+                    >
+                      <Copy className="size-3.5" />
+                    </button>
+                  </dd>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <dt className="text-ink3">ERC-721 Token ID</dt>
+                  <dd className="text-gold">{cert.tokenId}</dd>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <dt className="text-ink3">IPFS Metadata URI</dt>
+                  <dd className="truncate max-w-[240px] sm:max-w-sm text-ink2">{cert.ipfs}</dd>
+                </div>
+                {cert.artisanSignature && (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <dt className="text-ink3">Artisan ECDSA Signature</dt>
+                    <dd className="truncate max-w-[220px] sm:max-w-xs text-ink2">{cert.artisanSignature}</dd>
+                  </div>
+                )}
+                {cert.hashProof && (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <dt className="text-ink3">SHA-256 Asset Hash</dt>
+                    <dd className="truncate max-w-[220px] sm:max-w-xs text-ink2">{cert.hashProof}</dd>
+                  </div>
+                )}
+                {cert.nfcTag && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-2.5">
+                    <dt className="text-ink3">NFC Chip UID ({cert.nfcTag.standard})</dt>
+                    <dd className="text-ink2">
+                      {cert.nfcTag.uid} · Batch {cert.nfcTag.batch} · <span className="text-gold">{cert.nfcTag.tapCount} taps</span>
+                    </dd>
+                  </div>
+                )}
+              </dl>
+
+              {cert.verificationStatus && (
+                <div className="mt-4 flex flex-wrap gap-3 border-t border-line pt-4 text-xs">
+                  <a
+                    href={cert.verificationStatus.explorerUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 font-medium text-gold hover:text-gold-strong"
+                  >
+                    Inspect on PolygonScan (Amoy)
+                    <ExternalLink className="size-3.5" />
+                  </a>
+                  <a
+                    href={cert.verificationStatus.ipfsGatewayUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 font-medium text-ink2 hover:text-ink"
+                  >
+                    Open IPFS metadata
+                    <ExternalLink className="size-3.5" />
+                  </a>
+                </div>
+              )}
+            </div>
+
             {/* ownership history */}
             <div className="edge mt-6 rounded-lg bg-s1 p-6">
-              <h2 className="text-sm font-semibold text-ink">The piece's record</h2>
+              <h2 className="text-sm font-semibold text-ink">The piece's provenance record</h2>
               <ProvenanceTimeline
                 className="mt-4"
                 steps={[
-                  ...result.cert.history.map(
+                  ...cert.history.map(
                     (h): ProvStep => ({ label: h.label, date: formatDate(h.date), actor: h.actor, state: "done" })
                   ),
-                  ...(isClaimed
-                    ? [{ label: "Digital twin claimed", date: claimed ? "Just now" : formatDate("2024-01-19"), actor: claimed ? "You" : result.cert!.owner ?? undefined, state: "done" as const }]
-                    : [{ label: "Awaiting its keeper", state: "pending" as const }]),
+                  ...(!isClaimed ? [{ label: "Awaiting its keeper", state: "pending" as const }] : []),
                 ]}
               />
             </div>
 
-            <Link to="/verify" className="mt-5 inline-flex items-center gap-1.5 text-[13px] text-ink3 transition-colors hover:text-ink">
-              Verify another piece
-            </Link>
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-4">
+              <Link to="/verify" className="inline-flex items-center gap-1.5 text-[13px] text-ink3 transition-colors hover:text-ink">
+                ← Verify another piece
+              </Link>
+              {mask && (
+                <Link to={`/masks/${mask.slug}`} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-gold transition-colors hover:text-gold-strong">
+                  View {mask.name} in collection →
+                </Link>
+              )}
+            </div>
           </div>
         </div>
       )}

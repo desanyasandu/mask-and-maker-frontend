@@ -1,0 +1,147 @@
+name: Mask & Maker - Frontend CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - default
+      - develop
+      - "feature/**"
+    tags:
+      - "v*.*.*"
+  pull_request:
+    branches:
+      - main
+      - master
+      - default
+  workflow_dispatch:
+    inputs:
+      push_to_registry:
+        description: "Push Docker image to Docker Hub"
+        required: true
+        type: boolean
+        default: true
+      custom_tag:
+        description: "Optional custom image tag (e.g. v1.0.0, rc-1)"
+        required: false
+        type: string
+        default: ""
+
+env:
+  DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USERNAME || 'harshaitsme' }}
+  IMAGE_NAME: maskandmaker-frontend
+
+jobs:
+  # ==============================================================
+  # Stage 1: Quality Gate - TypeScript Check & Production Bundle
+  # ==============================================================
+  test-and-build:
+    name: "Quality Gate: TypeCheck & Vite Build"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+          cache-dependency-path: "package-lock.json"
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run TypeScript Typecheck
+        run: npm run typecheck
+
+      - name: Build Production Bundle
+        run: npm run build
+
+  # ==============================================================
+  # Stage 2: Containerization & Push to Docker Hub
+  # ==============================================================
+  build-and-push:
+    name: "Docker Build & Push: maskandmaker-frontend"
+    needs: [test-and-build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Determine if Push is Enabled & Normalize Username
+        id: push_eval
+        run: |
+          NORMALIZED_USER=$(echo "${{ env.DOCKERHUB_USER }}" | tr '[:upper:]' '[:lower:]' | xargs)
+          echo "dockerhub_user=${NORMALIZED_USER}" >> $GITHUB_OUTPUT
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "should_push=false" >> $GITHUB_OUTPUT
+          elif [ "${{ secrets.DOCKERHUB_USERNAME }}" = "" ] || [ "${{ secrets.DOCKERHUB_TOKEN }}" = "" ]; then
+            echo "⚠️ DOCKERHUB_USERNAME or DOCKERHUB_TOKEN secret is not set. Docker image build will be tested without pushing."
+            echo "should_push=false" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_push=${{ github.event.inputs.push_to_registry }}" >> $GITHUB_OUTPUT
+          else
+            echo "should_push=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Log in to Docker Hub
+        if: steps.push_eval.outputs.should_push == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ steps.push_eval.outputs.dockerhub_user }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract Docker Metadata (Tags & Labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.push_eval.outputs.dockerhub_user }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.event_name != 'pull_request' }}
+            type=raw,value=${{ github.event.inputs.custom_tag }},enable=${{ github.event.inputs.custom_tag != '' }}
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=sha,prefix=sha-,format=short
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ steps.push_eval.outputs.should_push == 'true' }}
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL || '' }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+  # ==============================================================
+  # Stage 3: Deployment Summary & Status Notification
+  # ==============================================================
+  ci-summary:
+    name: "CI/CD Summary Report"
+    needs: [test-and-build, build-and-push]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Generate Pipeline Summary
+        run: |
+          echo "## 🎭 Mask & Maker - Frontend CI/CD Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Quality Gate (TypeScript & Vite Build)** | ${{ needs.test-and-build.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Docker Hub Build & Push** | ${{ needs.build-and-push.result == 'success' && '✅ Succeeded' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Published Image" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.DOCKERHUB_USER }}/${{ env.IMAGE_NAME }}:latest\`" >> $GITHUB_STEP_SUMMARY

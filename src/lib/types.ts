@@ -96,10 +96,44 @@ export interface Certificate {
   mintedAt: string;
   status: "unclaimed" | "claimed";
   chain: "Polygon";
+  contractAddress?: string;
   tokenId: string;
   ipfs: string;
   owner: string | null;
+  ownerWallet?: string | null;
+  artisanSignature?: string;
+  hashProof?: string;
+  isTampered?: boolean;
+  nfcTag?: {
+    uid: string;
+    standard: string;
+    tapCount: number;
+    lastTappedAt: string | null;
+    batch: string;
+  };
+  verificationStatus?: {
+    onChainVerified: boolean;
+    nfcVerified: boolean;
+    physicalTagIntact: boolean;
+    signatureMatchesMaker: boolean;
+    explorerUrl: string;
+    ipfsGatewayUrl: string;
+  };
   history: CertificateEvent[];
+}
+
+export interface VerifyRegistryStats {
+  registryStatus: string;
+  network: string;
+  contract: string;
+  stats: {
+    totalCertificates: number;
+    unclaimedCount: number;
+    claimedCount: number;
+    totalNfcTaps: number;
+    activeTamperAlerts: number;
+    counterfeitGuaranteedHours: number;
+  };
 }
 
 export interface OrderItem {
@@ -132,11 +166,30 @@ export interface CraftStage {
 }
 
 export interface Workshop {
+  _id?: string;
+  id?: string;
   title: string;
   date: string;
   place: string;
   priceLKR: number;
   spotsLeft: number;
+}
+
+export interface PortalDashboardData {
+  stats: {
+    settledThisMonthLKR: number;
+    lifetimeRegistryRevenueLKR: number;
+    ordersOnBench: number;
+    certificateScans30Days: number;
+  };
+  benchOrders: {
+    id: string;
+    orderId: string;
+    piece: string;
+    maskSlug?: string;
+    buyer: string;
+    status: string;
+  }[];
 }
 
 export interface SearchHit {

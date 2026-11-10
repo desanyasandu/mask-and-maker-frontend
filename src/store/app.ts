@@ -1,9 +1,9 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { masks } from "../lib/mock/data";
+import { getCachedMask } from "../lib/mock/api";
 import type { Currency } from "../lib/types";
 
-const stockOf = (slug: string) => masks.find((m) => m.slug === slug)?.stock ?? 0;
+const stockOf = (slug: string) => getCachedMask(slug)?.stock ?? 1;
 
 export interface CartItem {
   slug: string;
@@ -108,10 +108,10 @@ export const useApp = create<AppState>()(
         const cart = Array.isArray(p.cart)
           ? p.cart
               .filter((i): i is CartItem => !!i && typeof i.slug === "string" && Number.isFinite(i.qty))
-              .map((i) => ({ slug: i.slug, qty: Math.min(Math.floor(i.qty), stockOf(i.slug)) }))
+              .map((i) => ({ slug: i.slug, qty: Math.max(1, Math.floor(i.qty)) }))
               .filter((i) => i.qty > 0)
           : current.cart;
-        const wishlist = Array.isArray(p.wishlist) ? p.wishlist.filter((w) => masks.some((m) => m.slug === w)) : current.wishlist;
+        const wishlist = Array.isArray(p.wishlist) ? p.wishlist.filter((w): w is string => typeof w === "string") : current.wishlist;
         return {
           ...current,
           cart,

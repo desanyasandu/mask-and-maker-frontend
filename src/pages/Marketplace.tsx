@@ -2,9 +2,8 @@ import { ArrowUpDown, Check, LayoutGrid, List, RotateCcw, SlidersHorizontal } fr
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigationType, useSearchParams } from "react-router-dom";
 import { api, sizeOf, type MaskQuery } from "@/lib/mock/api";
-import { artisans } from "@/lib/mock/data";
 import { usePageMeta } from "@/lib/meta";
-import type { Mask, Tradition } from "@/lib/types";
+import type { Artisan, Mask, Tradition } from "@/lib/types";
 import { formatMoney } from "@/lib/utils";
 import { useApp } from "@/store/app";
 import { cn } from "@/utils/cn";
@@ -50,11 +49,12 @@ export default function Marketplace() {
     setParams(next, { replace: true, state: { scrollKey } });
   }
 
+  const [makerList, setMakerList] = useState<Artisan[]>([]);
   const tradeParam = params.get("tradition");
   const tradition = traditionTabs.some((t) => t.id === tradeParam) ? (tradeParam as string) : "all";
   const setTradition = (t: string) => updateParam("tradition", t === "all" ? "" : t);
   const makerParam = params.get("artisan");
-  const artisan = artisans.some((a) => a.slug === makerParam) ? makerParam! : "all";
+  const artisan = makerParam ? makerParam : "all";
   const arOnly = params.get("ar") === "1";
   const verifiedOnly = params.get("verified") === "1";
   const priceParam = Number(params.get("maxPrice"));
@@ -135,7 +135,7 @@ export default function Marketplace() {
   const activeChips: { key: string; label: string; clear: () => void }[] = [];
   if (tradition !== "all") activeChips.push({ key: "t", label: `Tradition: ${tradition}`, clear: () => setTradition("all") });
   if (artisan !== "all") {
-    const a = artisans.find((x) => x.slug === artisan);
+    const a = makerList.find((x) => x.slug === artisan);
     activeChips.push({ key: "a", label: `Maker: ${a?.name ?? artisan}`, clear: () => updateParam("artisan") });
   }
   if (maxPrice < 215000) activeChips.push({ key: "p", label: `Under ${formatMoney(maxPrice, currency)}`, clear: () => updateParam("maxPrice") });
@@ -143,6 +143,12 @@ export default function Marketplace() {
   if (arOnly) activeChips.push({ key: "ar", label: "AR available", clear: () => updateParam("ar") });
   if (verifiedOnly) activeChips.push({ key: "v", label: "Verified", clear: () => updateParam("verified") });
   if (q) activeChips.push({ key: "q", label: `“${q}”`, clear: () => updateParam("q") });
+
+  useEffect(() => {
+    api.listArtisans().then((data) => {
+      if (data && data.length) setMakerList(data);
+    });
+  }, []);
 
   const resetAll = () => {
     const next = new URLSearchParams(params);
@@ -161,7 +167,7 @@ export default function Marketplace() {
           aria-label="Filter by maker"
         >
           <option value="all">All eight artisans</option>
-          {artisans.map((a) => (
+          {makerList.map((a) => (
             <option key={a.slug} value={a.slug}>
               {a.name} · {a.region}
             </option>

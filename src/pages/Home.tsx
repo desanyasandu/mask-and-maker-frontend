@@ -1,7 +1,9 @@
 import { ArrowRight } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { artisans, masks, articles } from "@/lib/mock/data";
+import { api } from "@/lib/mock/api";
 import { usePageMeta } from "@/lib/meta";
+import type { Article, Artisan, Mask } from "@/lib/types";
 import { formatDate, formatMoney } from "@/lib/utils";
 import { useApp } from "@/store/app";
 import { cn } from "@/utils/cn";
@@ -74,10 +76,17 @@ export default function Home() {
   const currency = useApp((s) => s.currency);
   usePageMeta("Digital heritage, made by hand", "Hand-carved Kaduru wood masks from Ambalangoda's master artisans. Verified provenance, artisan-direct pricing, AR previews.");
 
-  const heroMask = masks.find((m) => m.slug === "naga-raja-kolam")!;
-  const featured = masks.filter((m) => m.featured);
-  const sirisena = artisans[0];
-  const teaserArticles = articles.slice(0, 3);
+  const [heroMask, setHeroMask] = useState<Mask | null>(null);
+  const [featured, setFeatured] = useState<Mask[]>([]);
+  const [sirisena, setSirisena] = useState<Artisan | null>(null);
+  const [teaserArticles, setTeaserArticles] = useState<Article[]>([]);
+
+  useEffect(() => {
+    api.getMask("naga-raja-kolam").then((m) => m && setHeroMask(m)).catch(() => {});
+    api.featuredMasks().then((f) => f && f.length && setFeatured(f)).catch(() => {});
+    api.listArtisans().then((a) => a && a.length && setSirisena(a[0])).catch(() => {});
+    api.listArticles().then((art) => art && art.length && setTeaserArticles(art.slice(0, 3))).catch(() => {});
+  }, []);
 
   return (
     <>
@@ -119,36 +128,40 @@ export default function Home() {
 
           <Reveal className="relative min-h-[520px] sm:min-h-[640px] lg:min-h-0" delay={0.1}>
             <div className="absolute inset-0 overflow-hidden bg-s1">
-              <div className="absolute inset-0 animate-ken">
-                <ImageFrame
-                  src={heroMask.image}
-                  alt={`${heroMask.name}, a cobra-king Kolam mask carved by Sirisena Apuhamy, its six hoods rising from a painted crown`}
-                  ratio=""
-                  className="absolute inset-0 rounded-none ring-0"
-                  position="50% 30%"
-                  sizes="(min-width: 1024px) 50vw, 100vw"
-                  eager
-                />
-              </div>
+              {heroMask && (
+                <div className="absolute inset-0 animate-ken">
+                  <ImageFrame
+                    src={heroMask.image}
+                    alt={`${heroMask.name}, a cobra-king Kolam mask carved by Sirisena Apuhamy, its six hoods rising from a painted crown`}
+                    ratio=""
+                    className="absolute inset-0 rounded-none ring-0"
+                    position="50% 30%"
+                    sizes="(min-width: 1024px) 50vw, 100vw"
+                    eager
+                  />
+                </div>
+              )}
             </div>
-            <Link
-              to={`/masks/${heroMask.slug}`}
-              className="group absolute bottom-0 left-0 flex max-w-[calc(100%-1rem)] items-end gap-6 bg-canvas py-5 pr-6 pl-4 transition-colors hover:bg-s1 sm:pr-8 sm:pl-6 lg:py-6 lg:pr-10"
-              aria-label={`View ${heroMask.name}, this month's signature piece`}
-            >
-              <span>
-                <span className="block font-display text-2xl leading-tight text-ink sm:text-[28px]">{heroMask.name} <span className="font-sinhala text-base text-ink2">{heroMask.sinhala}</span></span>
-                <span className="mt-1 block text-sm text-ink2">
-                  Carved by Sirisena Apuhamy in {heroMask.carvingDays} days
+            {heroMask && (
+              <Link
+                to={`/masks/${heroMask.slug}`}
+                className="group absolute bottom-0 left-0 flex max-w-[calc(100%-1rem)] items-end gap-6 bg-canvas py-5 pr-6 pl-4 transition-colors hover:bg-s1 sm:pr-8 sm:pl-6 lg:py-6 lg:pr-10"
+                aria-label={`View ${heroMask.name}, this month's signature piece`}
+              >
+                <span>
+                  <span className="block font-display text-2xl leading-tight text-ink sm:text-[28px]">{heroMask.name} <span className="font-sinhala text-base text-ink2">{heroMask.sinhala}</span></span>
+                  <span className="mt-1 block text-sm text-ink2">
+                    Carved by Sirisena Apuhamy in {heroMask.carvingDays} days
+                  </span>
                 </span>
-              </span>
-              <span className="shrink-0 pb-0.5 text-right">
-                <span className="block text-base font-medium text-ink tnum">{formatMoney(heroMask.priceLKR, currency)}</span>
-                <span className="mt-1 inline-flex items-center gap-1 text-sm text-gold transition-colors group-hover:text-gold-strong">
-                  View <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                <span className="shrink-0 pb-0.5 text-right">
+                  <span className="block text-base font-medium text-ink tnum">{formatMoney(heroMask.priceLKR, currency)}</span>
+                  <span className="mt-1 inline-flex items-center gap-1 text-sm text-gold transition-colors group-hover:text-gold-strong">
+                    View <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                  </span>
                 </span>
-              </span>
-            </Link>
+              </Link>
+            )}
           </Reveal>
         </div>
       </section>
@@ -232,6 +245,7 @@ export default function Home() {
 
       <div data-band="alt" className="mt-24 pb-24">
       {/* ---------------------------------------------- ARTISAN SPOTLIGHT */}
+      {sirisena && (
       <section className="mx-auto max-w-7xl px-4 pt-24 sm:px-6" aria-label="Maker spotlight">
         <div className="edge overflow-hidden rounded-lg bg-s1">
           <div className="grid lg:grid-cols-5">
@@ -279,6 +293,7 @@ export default function Home() {
           </div>
         </div>
       </section>
+      )}
 
       {/* ---------------------------------------------- FOLKLORE TEASER */}
       <section className="mx-auto max-w-7xl px-4 pt-24 sm:px-6" aria-label="Folklore hub preview">

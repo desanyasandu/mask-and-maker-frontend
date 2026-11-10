@@ -1,7 +1,8 @@
 import { Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { masks } from "@/lib/mock/data";
+import { api, getCachedMask } from "@/lib/mock/api";
+import type { Mask } from "@/lib/types";
 import { formatMoney } from "@/lib/utils";
 import { useApp } from "@/store/app";
 import { Button, Drawer } from "../ui/kit";
@@ -18,6 +19,13 @@ export function CartDrawer() {
   const toast = useApp((s) => s.toast);
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const [masksList, setMasksList] = useState<Mask[]>([]);
+
+  useEffect(() => {
+    if (cart.length > 0 || open) {
+      api.listMasks().then(setMasksList).catch(() => {});
+    }
+  }, [cart.length, open]);
 
   /* browser back/forward shouldn't leave the drawer hanging over the new page */
   useEffect(() => {
@@ -25,8 +33,8 @@ export function CartDrawer() {
   }, [pathname]);
 
   const items = cart
-    .map((i) => ({ ...i, mask: masks.find((m) => m.slug === i.slug) }))
-    .filter((i): i is typeof i & { mask: (typeof masks)[number] } => Boolean(i.mask));
+    .map((i) => ({ ...i, mask: masksList.find((m) => m.slug === i.slug) ?? getCachedMask(i.slug) }))
+    .filter((i): i is typeof i & { mask: Mask } => Boolean(i.mask));
 
   const subtotal = items.reduce((sum, i) => sum + i.mask.priceLKR * i.qty, 0);
 

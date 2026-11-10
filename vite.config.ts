@@ -16,4 +16,17 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
     },
   },
+  server: {
+    port: 5173,
+    proxy: {
+      "/api": {
+        target: process.env.VITE_API_BASE_URL || "http://localhost:5000",
+        changeOrigin: true,
+      },
+      "/health": {
+        target: process.env.VITE_API_BASE_URL || "http://localhost:5000",
+        changeOrigin: true,
+      },
+    },
+  },
 });
