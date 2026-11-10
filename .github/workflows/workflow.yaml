@@ -85,10 +85,16 @@ jobs:
           elif [ "${{ secrets.DOCKERHUB_USERNAME }}" = "" ] || [ "${{ secrets.DOCKERHUB_TOKEN }}" = "" ]; then
             echo "⚠️ DOCKERHUB_USERNAME or DOCKERHUB_TOKEN secret is not set. Docker image build will be tested without pushing."
             echo "should_push=false" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "should_push=${{ github.event.inputs.push_to_registry }}" >> $GITHUB_OUTPUT
           else
-            echo "should_push=true" >> $GITHUB_OUTPUT
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -u "${NORMALIZED_USER}:${{ secrets.DOCKERHUB_TOKEN }}" "https://auth.docker.io/token?scope=repository:${NORMALIZED_USER}/${{ env.IMAGE_NAME }}:pull,push&service=registry.docker.io" || echo "000")
+            if [ "$HTTP_STATUS" != "200" ]; then
+              echo "::warning::Docker Hub token for '${NORMALIZED_USER}' returned HTTP ${HTTP_STATUS} when requesting pull,push scope (token is Read-Only). Building image without pushing until a 'Read, Write, Delete' PAT is configured."
+              echo "should_push=false" >> $GITHUB_OUTPUT
+            elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "should_push=${{ github.event.inputs.push_to_registry }}" >> $GITHUB_OUTPUT
+            else
+              echo "should_push=true" >> $GITHUB_OUTPUT
+            fi
           fi
 
       - name: Log in to Docker Hub
