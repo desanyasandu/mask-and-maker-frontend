@@ -1,6 +1,6 @@
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Heart, Menu, Moon, Search, ShoppingBag, Sun, User, X } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useApp } from "@/store/app";
 import { initialsOf, useAuth, type AuthUser } from "@/store/auth";
@@ -70,6 +70,7 @@ function ThemeToggle() {
   return (
     <button
       onClick={toggle}
+      data-spot
       aria-label={light ? "Switch to dark theme" : "Switch to gallery light theme"}
       className="grid size-11 place-items-center rounded-full border border-line text-ink2 transition-colors hover:bg-s2 hover:text-ink"
     >
@@ -137,6 +138,7 @@ function AccountMenu() {
     return (
       <Link
         to="/login"
+        data-spot
         className="hidden h-11 items-center gap-2 rounded-full border border-line px-4 text-[13.5px] font-medium whitespace-nowrap text-ink2 transition-colors hover:bg-s2 hover:text-ink sm:inline-flex"
       >
         <User className="size-4" aria-hidden="true" />
@@ -149,6 +151,7 @@ function AccountMenu() {
     <div ref={wrap} className="relative hidden sm:block">
       <button
         onClick={() => setOpen((v) => !v)}
+        data-spot
         aria-label={`Account menu for ${user.name}`}
         aria-expanded={open}
         aria-haspopup="menu"
@@ -191,6 +194,28 @@ function AccountMenu() {
   );
 }
 
+/** The spotlight's cone: a bright cap on the bar's top edge and light falling away below it. */
+const coneStyle = {
+  clipPath: "polygon(24% 0, 76% 0, 100% 100%, 0 100%)",
+  background: "linear-gradient(to bottom, color-mix(in srgb, var(--gold) 38%, transparent), color-mix(in srgb, var(--gold) 3%, transparent))",
+};
+
+function SpotCap() {
+  return <span className="absolute inset-x-[24%] top-0 h-[3px] rounded-b-full bg-gold-strong shadow-[0_0_10px_var(--gold)]" aria-hidden="true" />;
+}
+
+/** The same light, held still, behind the current page in the mobile menu. */
+function ActiveBeam() {
+  return (
+    <>
+      <span className="absolute inset-0 -z-10" style={{ background: "linear-gradient(to bottom, color-mix(in srgb, var(--gold) 20%, transparent), transparent 85%)" }} aria-hidden="true" />
+      <span className="absolute inset-x-[30%] top-0 h-[2px] rounded-b-full bg-gold-strong shadow-[0_0_8px_var(--gold)]" aria-hidden="true" />
+    </>
+  );
+}
+
+type Spot = { x: number; w: number };
+
 export function Header() {
   const user = useAuth((s) => s.user);
   const doSignOut = useSignOut();
@@ -202,6 +227,34 @@ export function Header() {
   const setCurrency = useApp((s) => s.setCurrency);
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
+  const reduce = useReducedMotion();
+
+  /* One spotlight for the whole bar: it follows the pointer or keyboard focus across anything
+     marked data-spot, and rests on the current page when nothing is under it. */
+  const bar = useRef<HTMLDivElement>(null);
+  const [spot, setSpot] = useState<Spot | null>(null);
+  const lit = useRef(false);
+  const measure = useCallback((el: Element | null | undefined): Spot | null => {
+    if (!el || !bar.current) return null;
+    const b = bar.current.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    return r.width ? { x: r.left - b.left + r.width / 2, w: r.width } : null;
+  }, []);
+  const rest = useCallback(() => measure(bar.current?.querySelector('[data-spot][aria-current="page"]')), [measure]);
+  const aim = (e: { target: EventTarget }) => {
+    const el = (e.target as HTMLElement).closest("[data-spot]");
+    if (el) setSpot(measure(el));
+  };
+  useEffect(() => {
+    lit.current = spot !== null;
+  }, [spot]);
+  useEffect(() => {
+    const settle = () => setSpot(rest());
+    settle();
+    window.addEventListener("resize", settle);
+    document.fonts?.ready.then(settle);
+    return () => window.removeEventListener("resize", settle);
+  }, [rest, location.pathname]);
 
   useEffect(() => setMobileOpen(false), [location.pathname]);
 
@@ -224,13 +277,39 @@ export function Header() {
       >
         Skip to content
       </a>
-      <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 rounded-full border border-line bg-canvas/95 pl-4 pr-2.5 shadow-[0_8px_30px_-12px_rgba(0,0,0,0.45)] backdrop-blur-sm sm:pl-5">
+      <div
+        ref={bar}
+        onPointerOver={(e) => e.pointerType !== "touch" && aim(e)}
+        onPointerLeave={() => setSpot(rest())}
+        onFocus={aim}
+        onBlur={() => setSpot(rest())}
+        className="relative isolate mx-auto flex h-16 max-w-7xl items-center gap-3 rounded-full border border-line bg-canvas/95 pl-4 pr-2.5 shadow-[0_8px_30px_-12px_rgba(0,0,0,0.45)] backdrop-blur-sm sm:pl-5"
+      >
+        {spot && (
+          <motion.div
+            aria-hidden="true"
+            className="pointer-events-none absolute top-0 bottom-0 left-0 -z-10"
+            initial={false}
+            animate={{ x: spot.x - Math.max(spot.w + 28, 60) / 2, width: Math.max(spot.w + 28, 60), opacity: 1 }}
+            transition={
+              reduce
+                ? { duration: 0 }
+                : lit.current
+                  ? { type: "spring", stiffness: 420, damping: 36 }
+                  : { x: { duration: 0 }, width: { duration: 0 }, opacity: { duration: 0.25 } }
+            }
+          >
+            <span className="absolute inset-0" style={coneStyle} />
+            <SpotCap />
+          </motion.div>
+        )}
         <Wordmark />
         <nav aria-label="Primary" className="ml-6 hidden items-center gap-1 lg:flex">
           {navLinks.map((l) => (
             <NavLink
               key={l.to}
               to={l.to}
+              data-spot
               className={({ isActive }) =>
                 cn(
                   "relative rounded-full px-3.5 py-2 text-[13.5px] font-medium transition-colors duration-180",
@@ -238,14 +317,7 @@ export function Header() {
                 )
               }
             >
-              {({ isActive }) => (
-                <>
-                  {l.label}
-                  {isActive && (
-                    <motion.span layoutId="nav-underline" className="absolute inset-x-3.5 -bottom-0.5 h-0.5 rounded-full bg-gold" transition={{ duration: 0.3 }} />
-                  )}
-                </>
-              )}
+              {l.label}
             </NavLink>
           ))}
         </nav>
@@ -253,6 +325,7 @@ export function Header() {
         <div className="ml-auto flex items-center gap-1.5">
           <button
             onClick={() => setPaletteOpen(true)}
+            data-spot
             className="hidden h-11 items-center gap-2 rounded-full border border-line bg-s1 px-3 text-[13px] text-ink3 transition-colors hover:bg-s2 hover:text-ink2 md:inline-flex"
             aria-label="Search (Ctrl K)"
           >
@@ -262,6 +335,7 @@ export function Header() {
           </button>
           <button
             onClick={() => setPaletteOpen(true)}
+            data-spot
             className="grid size-11 place-items-center rounded-full border border-line text-ink2 transition-colors hover:bg-s2 hover:text-ink md:hidden"
             aria-label="Search"
           >
@@ -273,6 +347,7 @@ export function Header() {
               <button
                 key={c}
                 onClick={() => setCurrency(c)}
+                data-spot
                 aria-pressed={currency === c}
                 className={cn(
                   "h-9 rounded-full px-3 transition-colors duration-180 tnum",
@@ -302,6 +377,7 @@ export function Header() {
 
           <button
             onClick={() => setMobileOpen((v) => !v)}
+            data-spot
             className="grid size-11 place-items-center rounded-full border border-line text-ink2 lg:hidden"
             aria-label={mobileOpen ? "Close menu" : "Open menu"}
             aria-expanded={mobileOpen}
@@ -327,19 +403,29 @@ export function Header() {
                   key={l.to}
                   to={l.to}
                   className={({ isActive }) =>
-                    cn("block rounded-lg px-3 py-2.5 text-[15px] font-medium", isActive ? "bg-s2 text-gold" : "text-ink2")
+                    cn("relative isolate block overflow-hidden rounded-lg px-3 py-2.5 text-[15px] font-medium", isActive ? "text-gold" : "text-ink2")
                   }
                 >
-                  {l.label}
+                  {({ isActive }) => (
+                    <>
+                      {isActive && <ActiveBeam />}
+                      {l.label}
+                    </>
+                  )}
                 </NavLink>
               ))}
               <NavLink
                 to={user ? "/account" : "/login"}
                 className={({ isActive }) =>
-                  cn("block rounded-lg px-3 py-2.5 text-[15px] font-medium sm:hidden", isActive ? "bg-s2 text-gold" : "text-ink2")
+                  cn("relative isolate block overflow-hidden rounded-lg px-3 py-2.5 text-[15px] font-medium sm:hidden", isActive ? "text-gold" : "text-ink2")
                 }
               >
-                {user ? "Your account" : "Sign in"}
+                {({ isActive }) => (
+                  <>
+                    {isActive && <ActiveBeam />}
+                    {user ? "Your account" : "Sign in"}
+                  </>
+                )}
               </NavLink>
               {user && (
                 <button
