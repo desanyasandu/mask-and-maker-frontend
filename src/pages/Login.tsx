@@ -60,7 +60,28 @@ export default function Login() {
 
   if (user) return <Navigate to={next} replace />;
 
-  const finish = (u: AuthUser) => {
+  const finish = async (u: AuthUser) => {
+    try {
+      const res = await fetch("/api/auth/google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          picture: u.picture,
+          provider: u.provider,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.token) {
+          localStorage.setItem("mm_jwt_token", data.token);
+        }
+      }
+    } catch {
+      // Graceful offline fallback
+    }
     signIn(u);
     toast(`Welcome, ${u.name.split(" ")[0]}`, { description: "You're signed in. Your crate and wishlist are kept.", kind: "success" });
   };

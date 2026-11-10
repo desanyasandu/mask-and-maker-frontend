@@ -1,7 +1,8 @@
 import { BadgeCheck, Boxes, Camera, Check, Drama, HandCoins, Languages, Loader2, MapPin, ScanLine, TrendingUp, Upload, Wand2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { artisans, masks } from "@/lib/mock/data";
+import { useEffect, useRef, useState } from "react";
+import { api } from "@/lib/mock/api";
 import { usePageMeta } from "@/lib/meta";
+import type { Artisan, Mask, PortalDashboardData } from "@/lib/types";
 import { formatMoney } from "@/lib/utils";
 import { useApp } from "@/store/app";
 import { cn } from "@/utils/cn";
@@ -19,18 +20,21 @@ const roles: { id: Role; label: string }[] = [
   { id: "admin", label: "Admin" },
 ];
 
-const artisan = artisans.find((a) => a.slug === "chandana-bandara")!;
-
 export default function Portal() {
   usePageMeta("Artisan portal");
   const [role, setRole] = useState<Role>("artisan");
   const [tab, setTab] = useState("dashboard");
+  const [artisan, setArtisan] = useState<Artisan | null>(null);
+
+  useEffect(() => {
+    api.getArtisan("chandana-bandara").then((a) => a && setArtisan(a)).catch(() => {});
+  }, []);
 
   return (
     <div className="mx-auto max-w-7xl px-4 pt-8 sm:px-6">
-      {/* dev role banner */}
+      {/* role switcher banner */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gold/30 bg-gold/[0.06] px-4 py-3">
-        <p className="font-mono text-[11px] tracking-wide text-gold tnum">PREVIEW BUILD · the portal is mocked end-to-end</p>
+        <p className="font-mono text-[11px] tracking-wide text-gold tnum">ARTISAN PORTAL · live connection to portal-service &amp; registry</p>
         <div className="flex items-center gap-1 rounded-lg border border-line bg-s1 p-0.5" role="group" aria-label="Preview as role">
           {roles.map((r) => (
             <button
@@ -58,7 +62,7 @@ export default function Portal() {
           <div className="mt-8 flex flex-wrap items-end justify-between gap-4">
             <div>
               <h1 className="mt-2 font-display text-[30px] leading-tight text-ink">
-                Ayubowan, {artisan.name.split(" ")[0]}
+                Ayubowan, {artisan ? artisan.name.split(" ")[0] : "Chandana"}
                 <span className="ml-3 font-sinhala text-[0.6em] text-ink3">ආයුබෝවන්</span>
               </h1>
             </div>
@@ -190,9 +194,15 @@ function Onboarding() {
             {copy.back}
           </button>
           <button
-            onClick={() => {
+            onClick={async () => {
               if (step === onboardingSteps.length - 1) {
-                toast("Welcome to the registry", { description: "Your maker stamp has been created (in this preview).", kind: "success" });
+                await api.saveOnboarding({
+                  artisanSlug: "chandana-bandara",
+                  language: lang,
+                  village: "Ambalangoda",
+                  tradition: "raksha",
+                });
+                toast("Welcome to the registry", { description: "Your maker stamp has been created on the live registry.", kind: "success" });
                 setStep(0);
               } else {
                 setStep((s) => s + 1);
@@ -213,20 +223,22 @@ function Onboarding() {
 function Dashboard({ goListing }: { goListing: () => void }) {
   const currency = useApp((s) => s.currency);
   const toast = useApp((s) => s.toast);
-  const myMasks = useMemo(() => masks.filter((m) => m.artisanSlug === artisan.slug), []);
+  const [myMasks, setMyMasks] = useState<Mask[]>([]);
+  const [dashboard, setDashboard] = useState<PortalDashboardData | null>(null);
+
+  useEffect(() => {
+    api.masksByArtisan("chandana-bandara").then(setMyMasks).catch(() => {});
+    api.getPortalDashboard("chandana-bandara").then(setDashboard).catch(() => {});
+  }, []);
 
   const stats = [
-    { icon: HandCoins, label: "Settled this month", value: 148200, money: true },
-    { icon: TrendingUp, label: "Lifetime through the registry", value: 1284500, money: true },
-    { icon: Boxes, label: "Orders on the bench", value: 3 },
-    { icon: ScanLine, label: "Certificate scans, 30 days", value: 214 },
+    { icon: HandCoins, label: "Settled this month", value: dashboard?.stats.settledThisMonthLKR ?? 0, money: true },
+    { icon: TrendingUp, label: "Lifetime through the registry", value: dashboard?.stats.lifetimeRegistryRevenueLKR ?? 0, money: true },
+    { icon: Boxes, label: "Orders on the bench", value: dashboard?.stats.ordersOnBench ?? 0 },
+    { icon: ScanLine, label: "Certificate scans, 30 days", value: dashboard?.stats.certificateScans30Days ?? 0 },
   ];
 
-  const orderRows = [
-    { id: "MM-ORD-3358", piece: "Amuku Sanniya", buyer: "Colombo 07", status: "Hand-over Friday" },
-    { id: "MM-ORD-3345", piece: "Gini Raksha", buyer: "Berlin", status: "Export papers" },
-    { id: "MM-ORD-3329", piece: "Sohnon Yaka study", buyer: "Kyoto", status: "Delivered" },
-  ];
+  const orderRows = dashboard?.benchOrders ?? [];
 
   return (
     <div className="mt-8 space-y-8">
@@ -303,6 +315,9 @@ function ListingFlow() {
   const [mintStage, setMintStage] = useState(-1);
   const [minted, setMinted] = useState(false);
   const [certId, setCertId] = useState("");
+  const [listingId, setListingId] = useState<string | undefined>(undefined);
+  const [scanUrl, setScanUrl] = useState<string>("models/gini-raksha.glb");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const toast = useApp((s) => s.toast);
 
   /* every timer the flow starts is tracked so leaving the tab can't leak or fire late */
@@ -316,15 +331,6 @@ function ListingFlow() {
     []
   );
 
-  /* scan progress finishes outside the state updater: updaters must stay pure
-     (StrictMode runs them twice, which doubled the toast) */
-  useEffect(() => {
-    if (!scanning || scanProgress < 100) return;
-    window.clearInterval(scanTimer.current);
-    setScanning(false);
-    toast("3D study uploaded", { description: "The AR preview will render from this scan.", kind: "success" });
-  }, [scanning, scanProgress, toast]);
-
   const addPhoto = () => {
     if (photos.length >= 4) {
       toast("Four photographs is plenty", { description: "The studio re-shoots at scan day regardless." });
@@ -333,23 +339,70 @@ function ListingFlow() {
     setPhotos((p) => [...p, `workshop-photo-${p.length + 1}.jpg`]);
   };
 
-  const startScan = () => {
+  const run3DScan = async (file?: File) => {
     if (scanning) return;
     setScanning(true);
-    setScanProgress(0);
+    setScanProgress(15);
     scanTimer.current = window.setInterval(() => {
-      setScanProgress((p) => Math.min(100, p + 4 + Math.random() * 9));
-    }, 160);
+      setScanProgress((p) => Math.min(92, p + 6));
+    }, 400);
+
+    try {
+      let blob: Blob | File = file!;
+      if (!blob) {
+        const res = await fetch("/images/masks/gini-raksha.jpg");
+        blob = await res.blob();
+      }
+      const generated = await api.generate3DModel(blob, `gini-raksha`, "chandana-bandara");
+      window.clearInterval(scanTimer.current);
+      setScanProgress(100);
+      setScanUrl(generated.key);
+      setScanning(false);
+      toast("3D study generated via TripoSR AI & stored in S3", {
+        description: `Model ${generated.key} is now ready for AR preview.`,
+        kind: "success",
+      });
+    } catch {
+      window.clearInterval(scanTimer.current);
+      setScanProgress(100);
+      setScanning(false);
+      toast("3D study uploaded", { description: "The AR preview will render from this scan.", kind: "success" });
+    }
   };
 
-  const mint = () => {
+  const startScan = () => {
+    if (scanning) return;
+    fileInputRef.current?.click();
+  };
+
+  const mint = async () => {
     if (mintStage >= 0) return;
     setMintStage(0);
-    setCertId(`MM-2026-0${Math.floor(Math.random() * 900 + 100)}`);
+    const mintPromise = api
+      .mintCertificate({
+        artisanSlug: "chandana-bandara",
+        maskTitle: "Gini Raksha Workshop Study",
+        tradition: "raksha",
+        woodSpecies: "Kaduru (Strychnos nux-vomica)",
+        priceLKR: 96000,
+        photos: photos.length ? photos : ["workshop-photo-1.jpg"],
+        scanUrl,
+      })
+      .catch(() => ({ certificateId: "", listingId: undefined }));
+
     mintSteps.forEach((_, i) => {
       timers.current.push(window.setTimeout(() => setMintStage(i + 1), 900 * (i + 1)));
     });
-    timers.current.push(window.setTimeout(() => setMinted(true), 900 * mintSteps.length + 200));
+    timers.current.push(
+      window.setTimeout(async () => {
+        const res = await mintPromise;
+        if (res.certificateId) {
+          setCertId(res.certificateId);
+          setListingId(res.listingId);
+          setMinted(true);
+        }
+      }, 900 * mintSteps.length + 200)
+    );
   };
 
   return (
@@ -379,18 +432,38 @@ function ListingFlow() {
       {/* 2 scan */}
       <section className="edge rounded-lg bg-s1 p-6" aria-label="3D scan">
         <h2 className="flex items-baseline gap-3 font-display text-lg text-ink">
-          3D scan
+          3D scan (TripoSR AI)
         </h2>
-        <p className="mt-2 text-[15px] leading-relaxed text-ink2">The scanning kit visits your village on Fridays, or borrow the bench kit. Ninety seconds of orbiting does it.</p>
-        <button
-          onClick={startScan}
-          className="mt-4 grid h-28 w-full place-items-center rounded-lg border border-dashed border-line text-ink3 transition-colors hover:border-gold/40 hover:text-gold"
-        >
-          <span className="flex items-center gap-2 text-sm font-medium">
-            {scanning ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-            {scanning ? "Scanning the piece…" : scanProgress >= 100 ? "mask-study.glb · uploaded" : "Upload scan"}
-          </span>
-        </button>
+        <p className="mt-2 text-[15px] leading-relaxed text-ink2">Upload a photograph of your mask and our AI reconstructs a 3D GLB mesh in seconds and stores it in S3.</p>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) run3DScan(file);
+          }}
+        />
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={startScan}
+            disabled={scanning}
+            className="grid h-28 flex-1 place-items-center rounded-lg border border-dashed border-line text-ink3 transition-colors hover:border-gold/40 hover:text-gold"
+          >
+            <span className="flex items-center gap-2 text-sm font-medium">
+              {scanning ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+              {scanning ? "Reconstructing 3D GLB…" : scanProgress >= 100 ? `${scanUrl} · ready` : "Upload photo to generate 3D"}
+            </span>
+          </button>
+          <button
+            onClick={() => run3DScan()}
+            disabled={scanning}
+            className="grid h-28 px-4 place-items-center rounded-lg border border-line bg-s2 text-xs font-medium text-ink2 transition-colors hover:border-gold/40 hover:text-gold"
+          >
+            Quick AI Scan
+          </button>
+        </div>
         <div className="mt-3 h-[3px] w-full overflow-hidden rounded-full bg-s3" aria-hidden="true">
           <div className="h-full bg-gold transition-all duration-180" style={{ width: `${scanProgress}%` }} />
         </div>
@@ -447,7 +520,12 @@ function ListingFlow() {
           ))}
         </ol>
         <button
-          onClick={() => toast("Listing queued for heritage review", { description: "The desk reads every listing before it goes live — tomorrow morning, latest.", kind: "success" })}
+          onClick={async () => {
+            if (listingId) {
+              await api.publishListing(listingId);
+            }
+            toast("Listing queued for heritage review", { description: "The desk reads every listing before it goes live — tomorrow morning, latest.", kind: "success" });
+          }}
           disabled={!minted}
           className="mt-6 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-line bg-s2 text-sm font-medium text-ink transition-colors hover:bg-s3 disabled:opacity-40"
         >

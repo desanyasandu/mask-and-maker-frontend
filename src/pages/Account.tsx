@@ -1,10 +1,9 @@
 import { BadgeCheck, BookUser, LogOut, Mail, MapPin, PackageOpen, ScanLine, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "@/lib/mock/api";
-import { certificates, masks } from "@/lib/mock/data";
+import { api, getCachedMask } from "@/lib/mock/api";
 import { usePageMeta } from "@/lib/meta";
-import type { Order } from "@/lib/types";
+import type { Certificate, Mask, Order } from "@/lib/types";
 import { formatDate, formatMoney } from "@/lib/utils";
 import { useApp } from "@/store/app";
 import { useAuth } from "@/store/auth";
@@ -34,14 +33,21 @@ export default function Account() {
   usePageMeta("Your account");
   const [tab, setTab] = useState("orders");
   const [orderList, setOrderList] = useState<Order[] | null>(null);
+  const [masksList, setMasksList] = useState<Mask[]>([]);
+  const [certList, setCertList] = useState<Certificate[]>([]);
   const wishlist = useApp((s) => s.wishlist);
   const currency = useApp((s) => s.currency);
   const user = useAuth((s) => s.user)!; // the route is wrapped in RequireAuth
   const doSignOut = useSignOut();
 
   useEffect(() => {
-    api.listOrders().then(setOrderList);
+    api.listOrders().then(setOrderList).catch(() => setOrderList([]));
+    api.listMasks().then(setMasksList).catch(() => {});
+    api.listCertificates().then(setCertList).catch(() => {});
   }, []);
+
+  const claimedCerts = certList.filter((c) => c.status === "claimed");
+  const piecesKept = orderList ? orderList.reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.qty, 0), 0) : 0;
 
   return (
     <div className="mx-auto max-w-7xl px-4 pt-10 sm:px-6">
@@ -68,9 +74,9 @@ export default function Account() {
         </div>
         <div className="flex gap-8">
           {[
-            ["Pieces kept", "3"],
-            ["Twins claimed", "1"],
-            ["Letters read", "11"],
+            ["Pieces kept", String(piecesKept)],
+            ["Twins claimed", String(claimedCerts.length)],
+            ["Wishlisted", String(wishlist.length)],
           ].map(([k, v]) => (
             <div key={k} className="text-right">
               <p className="font-mono text-xl text-ink tnum">{v}</p>
@@ -106,7 +112,7 @@ export default function Account() {
                 <div className="grid gap-6 pt-5 lg:grid-cols-2">
                   <ul className="space-y-3">
                     {o.items.map((i) => {
-                      const m = masks.find((x) => x.slug === i.slug);
+                      const m = masksList.find((x) => x.slug === i.slug) ?? getCachedMask(i.slug);
                       if (!m) return null;
                       return (
                         <li key={i.slug} className="flex items-center gap-3">
@@ -137,10 +143,8 @@ export default function Account() {
       {/* digital twins */}
       {tab === "twins" && (
         <div className="mt-8 grid gap-4 md:grid-cols-2">
-          {certificates
-            .filter((c) => c.status === "claimed")
-            .map((c) => {
-              const m = masks.find((x) => x.slug === c.maskSlug);
+          {claimedCerts.map((c) => {
+              const m = masksList.find((x) => x.slug === c.maskSlug) ?? getCachedMask(c.maskSlug);
               if (!m) return null;
               return (
                 <div key={c.id} className="edge flex gap-5 rounded-lg bg-s1 p-5">
@@ -151,7 +155,7 @@ export default function Account() {
                       <VerifiedSeal size="sm" label={null} />
                     </div>
                     <p className="mt-1 font-mono text-[12px] text-gold tnum">{c.id}</p>
-                    <p className="mt-1 text-xs text-ink3">Claimed {formatDate("2024-01-19")} · {c.chain} registry</p>
+                    <p className="mt-1 text-xs text-ink3">Minted {formatDate(c.mintedAt)} · {c.chain} registry</p>
                     <Link to={`/verify/${c.id}`} className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-gold hover:text-gold-strong">
                       <ScanLine className="size-3.5" aria-hidden="true" />
                       Open certificate
@@ -182,8 +186,8 @@ export default function Account() {
         ) : (
           <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {wishlist
-              .map((slug) => masks.find((m) => m.slug === slug))
-              .filter((m): m is (typeof masks)[number] => Boolean(m))
+              .map((slug) => masksList.find((m) => m.slug === slug) ?? getCachedMask(slug))
+              .filter((m): m is Mask => Boolean(m))
               .map((m) => (
                 <div key={m.slug} className="edge relative flex items-center gap-4 rounded-lg bg-s1 p-4">
                   <MaskArtwork mask={m} ratio="" className="size-16 shrink-0 rounded-lg" />

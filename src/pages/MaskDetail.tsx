@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { api } from "@/lib/mock/api";
 import { usePageMeta } from "@/lib/meta";
-import type { Artisan, Mask } from "@/lib/types";
+import type { Artisan, Certificate, Mask } from "@/lib/types";
 import { formatDate, formatMoney, hashString } from "@/lib/utils";
 import { useApp } from "@/store/app";
 import { cn } from "@/utils/cn";
@@ -41,6 +41,7 @@ export default function MaskDetail() {
   const wantsAR = searchParams.get("ar") === "1";
   const [mask, setMask] = useState<Mask | null>(null);
   const [artisan, setArtisan] = useState<Artisan | null>(null);
+  const [cert, setCert] = useState<Certificate | null>(null);
   const [related, setRelated] = useState<Mask[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("photographs");
@@ -77,10 +78,15 @@ export default function MaskDetail() {
       if (!alive) return;
       setMask(m ?? null);
       if (m) {
-        const [a, r] = await Promise.all([api.getArtisan(m.artisanSlug), api.relatedMasks(m.slug, m.tradition)]);
+        const [a, r, c] = await Promise.all([
+          api.getArtisan(m.artisanSlug),
+          api.relatedMasks(m.slug, m.tradition),
+          api.certificateForMask(m.slug),
+        ]);
         if (alive) {
           setArtisan(a ?? null);
           setRelated(r);
+          setCert(c ?? null);
         }
       }
       if (alive) setLoading(false);
@@ -91,6 +97,18 @@ export default function MaskDetail() {
   }, [slug, wantsAR]);
 
   const provenance = useMemo<ProvStep[]>(() => {
+    if (cert && cert.history && cert.history.length > 0) {
+      const steps: ProvStep[] = cert.history.map((h) => ({
+        label: h.label,
+        date: formatDate(h.date),
+        actor: h.actor,
+        state: "done",
+      }));
+      if (cert.status !== "claimed") {
+        steps.push({ label: "Claimed by its keeper", state: "pending" });
+      }
+      return steps;
+    }
     if (!mask || !artisan) return [];
     const y = mask.year;
     return [
@@ -101,7 +119,7 @@ export default function MaskDetail() {
       { label: "NFC & QR tag attached", date: formatDate(`${y}-03-12`), actor: "Registry desk", state: "done" },
       { label: "Claimed by its keeper", state: "pending" },
     ];
-  }, [mask, artisan]);
+  }, [cert, mask, artisan]);
 
   if (loading) {
     return (
@@ -424,21 +442,30 @@ export default function MaskDetail() {
               </summary>
               <dl className="mt-3 space-y-2 font-mono text-[12px] tnum">
                 {[
-                  ["Chain", "Polygon mainnet"],
+                  ["Chain", cert?.chain || "Polygon PoS"],
                   ["Token standard", "ERC-721 · non-transferable metadata lock"],
-                  ["Token ID", `#${mask.certId.slice(9)} · contract 0x3f2c…99c1`],
-                  ["Metadata", `ipfs://bafybei${techId}…x3kq`],
-                  ["Registry hash", `keccak256 · ${techId}…e7`],
+                  ["Token ID", `#${cert?.tokenId || mask.certId.slice(9)} · contract ${cert?.contractAddress ? `${cert.contractAddress.slice(0, 6)}…${cert.contractAddress.slice(-4)}` : "0x3f2c…99c1"}`],
+                  ["Metadata", cert?.ipfs || `ipfs://bafybei${techId}…x3kq`],
+                  ["Registry hash", cert?.hashProof || `sha256 · ${techId}…e7`],
+                  ["NFC tag UID", cert?.nfcTag?.uid || mask.certId],
                 ].map(([k, v]) => (
                   <div key={k} className="flex justify-between gap-4">
                     <dt className="text-ink3">{k}</dt>
-                    <dd className="text-right text-ink2">{v}</dd>
+                    <dd className="max-w-[65%] truncate text-right text-ink2" title={v}>{v}</dd>
                   </div>
                 ))}
               </dl>
-              <p className="mt-3 text-xs leading-relaxed text-ink3">
-                Verification needs nothing here — the tag on the mask is enough. This section exists for the curious.
-              </p>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs leading-relaxed text-ink3">
+                  Verification needs nothing here — the tag on the mask is enough.
+                </p>
+                <Link
+                  to={`/verify/${mask.certId}`}
+                  className="text-xs font-medium text-gold transition-colors hover:text-gold-strong"
+                >
+                  Inspect certificate on registry →
+                </Link>
+              </div>
             </details>
           </div>
         </div>

@@ -1,7 +1,7 @@
 import { ArrowLeft, ArrowRight, BookOpen, CalendarDays, Clapperboard, NotebookPen, Play } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { articles, craftStages, masks, traditions, workshops } from "@/lib/mock/data";
+import { api } from "@/lib/mock/api";
 import { usePageMeta } from "@/lib/meta";
 import { formatDate, formatMoney } from "@/lib/utils";
 import { useApp } from "@/store/app";
@@ -12,7 +12,7 @@ import { ImageFrame } from "@/components/ui/MaskImage";
 import { FlameBand } from "@/components/art";
 import { craftHands, photos, traditionPhoto } from "@/lib/photos";
 import { Reveal } from "@/components/ui/motion";
-import type { Article } from "@/lib/types";
+import type { Article, CraftStage, Mask, TraditionDoc, Workshop } from "@/lib/types";
 
 const kindTabs = [
   { id: "all", label: "Everything" },
@@ -26,8 +26,22 @@ const kindTabs = [
 export default function Heritage() {
   const [params, setParams] = useSearchParams();
   const currency = useApp((s) => s.currency);
+  const [articlesList, setArticlesList] = useState<Article[]>([]);
+  const [traditionsList, setTraditionsList] = useState<TraditionDoc[]>([]);
+  const [stagesList, setStagesList] = useState<CraftStage[]>([]);
+  const [workshopsList, setWorkshopsList] = useState<Workshop[]>([]);
+  const [masksList, setMasksList] = useState<Mask[]>([]);
+
+  useEffect(() => {
+    api.listArticles().then((a) => a && setArticlesList(a)).catch(() => {});
+    api.listTraditions().then((t) => t && setTraditionsList(t)).catch(() => {});
+    api.listStages().then((s) => s && setStagesList(s)).catch(() => {});
+    api.listWorkshops().then((w) => w && setWorkshopsList(w)).catch(() => {});
+    api.listMasks().then((m) => m && setMasksList(m)).catch(() => {});
+  }, []);
+
   const articleSlug = params.get("article");
-  const article = articles.find((a) => a.slug === articleSlug) ?? null;
+  const article = articlesList.find((a) => a.slug === articleSlug) ?? null;
 
   usePageMeta(article ? article.title : "The Folklore Hub", "Ritual significance, carving craft and the folklore of Sri Lanka's mask traditions.");
 
@@ -51,7 +65,7 @@ export default function Heritage() {
       {/* taxonomy explorer */}
       <section className="mt-14" aria-label="Mask taxonomy">
         <div className="grid gap-4 md:grid-cols-3">
-          {traditions.map((t) => (
+          {traditionsList.map((t) => (
             <Reveal key={t.slug}>
               <Link
                 to={`/heritage/${t.slug}`}
@@ -71,7 +85,7 @@ export default function Heritage() {
                 <p className="mt-1 text-[13px] font-medium text-gold/90">{t.tagline}</p>
                 <p className="mt-3 line-clamp-3 flex-1 text-[15px] leading-relaxed text-ink2">{t.description}</p>
                 <div className="mt-5 flex items-center justify-between border-t border-line pt-4">
-                  <span className="text-[13.5px] text-ink3 tnum">{masks.filter((m) => m.tradition === t.slug).length} pieces in the registry</span>
+                  <span className="text-[13.5px] text-ink3 tnum">{masksList.filter((m) => m.tradition === t.slug).length} pieces in the registry</span>
                   <ArrowRight className="size-4 text-ink3 transition-all duration-180 group-hover:translate-x-1 group-hover:text-gold" aria-hidden="true" />
                 </div>
               </Link>
@@ -83,7 +97,7 @@ export default function Heritage() {
       <FlameBand tall className="mt-20 opacity-80" />
 
       {/* scroll story — from log to mask */}
-      <ScrollStory />
+      <ScrollStory stages={stagesList} />
 
       {/* films */}
       <section className="mt-24" aria-label="Films">
@@ -93,7 +107,7 @@ export default function Heritage() {
           </div>
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
-          {articles
+          {articlesList
             .filter((a) => a.kind === "film")
             .map((a) => (
               <FilmCard key={a.slug} article={a} />
@@ -111,14 +125,14 @@ export default function Heritage() {
 
       {/* articles index */}
       <section className="mt-24" aria-label="Essays and notes">
-        <ArticleIndex />
+        <ArticleIndex articlesList={articlesList} />
       </section>
 
       {/* workshops */}
       <section className="mt-24 pb-4" aria-label="Workshops">
         <h2 className="mt-2 font-display text-[28px] leading-[1.15] text-ink">Workshops &amp; ritual nights</h2>
         <div className="mt-8 grid gap-4 md:grid-cols-3">
-          {workshops.map((w) => (
+          {workshopsList.map((w) => (
             <div key={w.title} className="edge flex flex-col rounded-lg bg-s2 p-6">
               <p className="flex items-center gap-2 font-mono text-[12px] text-gold tnum">
                 <CalendarDays className="size-3.5" aria-hidden="true" />
@@ -128,7 +142,7 @@ export default function Heritage() {
               <p className="mt-1.5 text-[13px] text-ink3">{w.place}</p>
               <div className="mt-5 flex items-center justify-between border-t border-line pt-4">
                 <span className="font-mono text-[15px] text-ink tnum">{formatMoney(w.priceLKR, currency)}</span>
-                <ReserveButton title={w.title} spots={w.spotsLeft} />
+                <ReserveButton id={w._id || w.id} title={w.title} spots={w.spotsLeft} />
               </div>
             </div>
           ))}
@@ -138,15 +152,35 @@ export default function Heritage() {
   );
 }
 
-function ReserveButton({ title, spots }: { title: string; spots: number }) {
+function ReserveButton({ id, title, spots: initialSpots }: { id?: string; title: string; spots: number }) {
   const toast = useApp((s) => s.toast);
+  const [spots, setSpots] = useState(initialSpots);
+  const [booked, setBooked] = useState(false);
+
+  const reserve = async () => {
+    if (booked || spots <= 0) return;
+    if (id) {
+      const updated = await api.bookWorkshop(id);
+      if (updated && typeof updated.spotsLeft === "number") {
+        setSpots(updated.spotsLeft);
+      } else {
+        setSpots((s) => Math.max(0, s - 1));
+      }
+    } else {
+      setSpots((s) => Math.max(0, s - 1));
+    }
+    setBooked(true);
+    toast("Seat held for 48 hours", { description: `${title} — your seat is reserved in the live registry.`, kind: "success" });
+  };
+
   return (
     <Button
       size="sm"
       variant="outline"
-      onClick={() => toast("Seat held for 48 hours", { description: `${title} — ${spots} seats were left; yours is one of them.`, kind: "success" })}
+      disabled={booked || spots <= 0}
+      onClick={reserve}
     >
-      Hold a seat
+      {booked ? "Seat held" : "Hold a seat"}
       <span className="font-mono text-[10px] text-ink3 tnum">{spots} left</span>
     </Button>
   );
@@ -154,7 +188,7 @@ function ReserveButton({ title, spots }: { title: string; spots: number }) {
 
 /* ---------------- scroll story ---------------- */
 
-function ScrollStory() {
+function ScrollStory({ stages }: { stages: CraftStage[] }) {
   const [active, setActive] = useState(0);
   const listRef = useRef<HTMLOListElement>(null);
 
@@ -172,7 +206,9 @@ function ScrollStory() {
     );
     items.forEach((el) => io.observe(el));
     return () => io.disconnect();
-  }, []);
+  }, [stages.length]);
+
+  const total = Math.max(1, stages.length);
 
   return (
     <section className="mt-20" aria-label="From log to mask">
@@ -183,18 +219,18 @@ function ScrollStory() {
             Every registry mask passes these eight stations in order. The timeline on its certificate begins at stage one — the tree.
           </p>
           <p className="mt-6 text-[13px] text-ink3 tnum" aria-live="polite">
-            Stage {active + 1} / {craftStages.length}
+            Stage {stages.length ? active + 1 : 0} / {stages.length}
           </p>
           <figure className="mt-8 hidden lg:block">
             <ImageFrame src={craftHands.src} alt={craftHands.alt} ratio="aspect-[4/3]" position={craftHands.position} className="rounded-lg" />
             <figcaption className="mt-2 text-[13px] text-ink3">{craftHands.caption}</figcaption>
           </figure>
           <div className="mt-2 h-[3px] w-full overflow-hidden rounded-full bg-s3" aria-hidden="true">
-            <div className="h-full rounded-full bg-gold transition-all duration-300" style={{ width: `${((active + 1) / craftStages.length) * 100}%` }} />
+            <div className="h-full rounded-full bg-gold transition-all duration-300" style={{ width: `${((active + 1) / total) * 100}%` }} />
           </div>
         </div>
         <ol ref={listRef} className="space-y-4">
-          {craftStages.map((s, i) => (
+          {stages.map((s, i) => (
             <li
               key={s.n}
               data-stage={i}
@@ -253,13 +289,13 @@ function FilmCard({ article }: { article: Article }) {
 
 /* ---------------- article index + reader ---------------- */
 
-function ArticleIndex() {
+function ArticleIndex({ articlesList }: { articlesList: Article[] }) {
   const [kind, setKind] = useState("all");
   const [, setParams] = useSearchParams();
 
   const list = useMemo(
-    () => (kind === "all" ? articles.filter((a) => a.kind !== "film") : articles.filter((a) => a.kind === kind)),
-    [kind]
+    () => (kind === "all" ? articlesList.filter((a) => a.kind !== "film") : articlesList.filter((a) => a.kind === kind)),
+    [kind, articlesList]
   );
 
   return (
