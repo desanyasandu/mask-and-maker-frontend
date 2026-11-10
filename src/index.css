@@ -113,6 +113,18 @@ html[data-theme="light"] {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+@keyframes firefly {
+  0% { transform: translate(0, 0); opacity: 0.25; }
+  35% { opacity: 1; }
+  70% { opacity: 0.4; }
+  100% { transform: translate(14px, -22px); opacity: 0.9; }
+}
+.firefly {
+  animation: firefly var(--d, 10s) ease-in-out var(--dl, 0s) infinite alternate;
+}
+@media (prefers-reduced-motion: reduce) {
+  .firefly { animation: none; }
+}
 
 /* ============================================================ */
 

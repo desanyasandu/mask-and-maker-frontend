@@ -1,12 +1,11 @@
-import { BadgeCheck, Heart, Loader2, Lock, PackageOpen, ShieldCheck } from "lucide-react";
+import { Loader2, Lock, ShieldCheck } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { Modal } from "@/components/ui/kit";
-import { Pic } from "@/components/ui/MaskImage";
+import { LampScene } from "@/components/ui/LampScene";
 import { CANCELLED, googleClientId, loadGoogle, signInWithGoogle } from "@/lib/google";
 import { usePageMeta } from "@/lib/meta";
-import { photos } from "@/lib/photos";
 import { useApp } from "@/store/app";
 import { initialsOf, useAuth, type AuthUser } from "@/store/auth";
 import { EXPO } from "@/lib/utils";
@@ -16,12 +15,6 @@ export const safeNext = (next: string | null) => (next && /^\/(?!\/|login)/.test
 
 /** Why the visitor landed here, when a protected page sent them. */
 const reasonFor = (path: string) => (path.startsWith("/account") ? "Your account is private. Sign in to open it." : "");
-
-const perks = [
-  { icon: BadgeCheck, title: "Your certificates, kept", body: "Every piece you buy arrives with a verifiable certificate and a digital twin." },
-  { icon: PackageOpen, title: "Orders in one place", body: "Follow each mask from the carver's bench to your door." },
-  { icon: Heart, title: "A wishlist that follows you", body: "Save pieces on your phone, find them again on your laptop." },
-];
 
 const sampleAccounts: AuthUser[] = [
   { id: "preview-ruwin", name: "Ruwin Jayasuriya", email: "ruwin.jayasuriya@example.com", provider: "preview" },
@@ -51,6 +44,7 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [chooser, setChooser] = useState(false);
+  const [lamp, setLamp] = useState(true);
   const preview = !googleClientId;
 
   // load Google's script ahead of the click so its popup opens inside the click
@@ -91,55 +85,35 @@ export default function Login() {
   return (
     <div className="mx-auto max-w-6xl px-4 pt-8 sm:px-6">
       <div className="edge grid overflow-hidden rounded-[28px] bg-s1 lg:min-h-[640px] lg:grid-cols-[1.05fr_1fr]">
-        {/* the photograph */}
-        <section className="relative isolate flex min-h-[132px] flex-col justify-end overflow-hidden p-6 sm:min-h-[200px] sm:p-10 lg:justify-between" aria-label="About signing in">
-          <Pic
-            src={photos.masksWall2.src}
-            alt=""
-            eager
-            sizes="(min-width: 1024px) 560px, 100vw"
-            style={{ objectPosition: photos.masksWall2.position ?? "50% 50%" }}
-            className="absolute inset-0 -z-20 size-full object-cover"
-          />
-          <div className="absolute inset-0 -z-10 bg-gradient-to-t from-black/90 via-black/55 to-black/25" aria-hidden="true" />
-
-          <p className="hidden items-center gap-2 font-mono text-[11px] tracking-[0.18em] text-[#ddb983] uppercase lg:flex">
+        {/* the lamp: its light is what the sign-in card is lit by */}
+        <LampScene on={lamp} onToggle={() => setLamp((v) => !v)} className="min-h-[250px] sm:min-h-[320px] lg:min-h-0">
+          <p className="absolute top-8 left-10 hidden items-center gap-2 font-mono text-[11px] tracking-[0.18em] text-[#ddb983] uppercase lg:flex">
             <span className="h-px w-8 bg-[#ddb983]/70" aria-hidden="true" />
             The Ambalangoda registry
           </p>
-
-          <div>
-            <p className="max-w-md font-display text-[26px] leading-[1.1] tracking-[-0.015em] text-white sm:text-[42px]">
-              Every mask arrives with its story.
-            </p>
-            <p className="mt-3 hidden max-w-md text-[15px] leading-relaxed text-white/80 sm:block">
+          <div className="hidden px-10 pb-10 lg:block">
+            <p className="max-w-md font-display text-[38px] leading-[1.1] tracking-[-0.015em] text-white">Every mask arrives with its story.</p>
+            <p className="mt-3 max-w-md text-[15px] leading-relaxed text-white/70">
               Sign in to keep what you collect — the certificate, the maker, the date it left the workshop.
             </p>
-            <ul className="mt-7 hidden gap-4 lg:grid">
-              {perks.map(({ icon: Icon, title, body }) => (
-                <li key={title} className="flex items-start gap-3.5">
-                  <span className="grid size-10 shrink-0 place-items-center rounded-full border border-white/20 bg-white/10 text-[#ddb983] backdrop-blur-sm">
-                    <Icon className="size-[18px]" aria-hidden="true" />
-                  </span>
-                  <span>
-                    <span className="block text-[15px] font-medium text-white">{title}</span>
-                    <span className="block text-[13.5px] leading-snug text-white/70">{body}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-7 hidden text-[12.5px] text-white/55 lg:block">
-              {photos.masksWall2.caption} ·{" "}
-              <Link to="/legal/credits" className="underline underline-offset-2 hover:text-white/80">
-                picture credit
-              </Link>
-            </p>
           </div>
-        </section>
+        </LampScene>
 
         {/* the sign-in card */}
-        <section className="flex items-center justify-center px-6 py-8 sm:px-12 sm:py-12" aria-labelledby="signin-title">
-          <div className="w-full max-w-sm">
+        <section className="relative flex items-center justify-center px-6 py-8 sm:px-12 sm:py-12" aria-labelledby="signin-title">
+          <p
+            aria-hidden={lamp}
+            className={`absolute inset-x-6 text-center font-display text-lg text-ink3transition-opacity duration-500 ${lamp ? "pointer-events-none opacity-0" : "opacity-100 delay-300"}`}
+          >
+            Pull the cord to light the way in.
+          </p>
+          <motion.div
+            inert={!lamp}
+            initial={false}
+            animate={{ opacity: lamp ? 1 : 0, y: lamp || reduce ? 0 : 10 }}
+            transition={{ duration: reduce ? 0 : 0.5, delay: lamp && !reduce ? 0.12 : 0, ease: EXPO }}
+            className="w-full max-w-sm"
+          >
             <motion.span {...rise(0)} className="relative hidden size-14 place-items-center rounded-full sm:grid border border-gold/40 bg-s2 text-gold">
               <span className="absolute inset-[4px] rounded-full border border-gold/20" aria-hidden="true" />
               <ShieldCheck className="size-6" aria-hidden="true" />
@@ -206,7 +180,7 @@ export default function Login() {
                 </p>
               )}
             </motion.div>
-          </div>
+          </motion.div>
         </section>
       </div>
 
