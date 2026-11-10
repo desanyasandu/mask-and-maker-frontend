@@ -15,6 +15,7 @@ import { FlameBand } from "@/components/art";
 import { Marquee } from "@/components/ui/Marquee";
 import { craftHands, photos } from "@/lib/photos";
 import { ButtonLink } from "@/components/ui/kit";
+import { HeroMaskPortrait } from "@/components/ui/HeroMaskPortrait";
 
 /* ------------------------------------------------ sections ------- */
 
@@ -126,22 +127,8 @@ export default function Home() {
             </Reveal>
           </div>
 
-          <Reveal className="relative min-h-[520px] sm:min-h-[640px] lg:min-h-0" delay={0.1}>
-            <div className="absolute inset-0 overflow-hidden bg-s1">
-              {heroMask && (
-                <div className="absolute inset-0 animate-ken">
-                  <ImageFrame
-                    src={heroMask.image}
-                    alt={`${heroMask.name}, a cobra-king Kolam mask carved by Sirisena Apuhamy, its six hoods rising from a painted crown`}
-                    ratio=""
-                    className="absolute inset-0 rounded-none ring-0"
-                    position="50% 30%"
-                    sizes="(min-width: 1024px) 50vw, 100vw"
-                    eager
-                  />
-                </div>
-              )}
-            </div>
+          <Reveal className="relative min-h-[clamp(340px,110vw,520px)] sm:min-h-[640px] lg:min-h-0" delay={0.1}>
+            <HeroMaskPortrait />
             {heroMask && (
               <Link
                 to={`/masks/${heroMask.slug}`}
