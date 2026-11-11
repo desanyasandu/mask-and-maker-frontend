@@ -429,6 +429,8 @@ export const api = {
   },
 
   async mintCertificate(payload: {
+    listingId?: string;
+    maskSlug?: string;
     artisanSlug?: string;
     maskTitle?: string;
     tradition?: Tradition;
@@ -510,9 +512,14 @@ export const api = {
       modelViewerProps?: { src?: string };
     };
     const key = data.asset?.key || `models/${maskSlug}.glb`;
+    const streamPath = data.modelViewerProps?.src || data.asset?.publicUrl || mediaStreamUrl(key);
+    const srcWithCacheBust = streamPath.includes("?")
+      ? `${streamPath}&t=${Date.now()}`
+      : `${streamPath}?t=${Date.now()}`;
+
     return {
       key,
-      src: `${mediaStreamUrl(key)}?t=${Date.now()}`,
+      src: srcWithCacheBust,
     };
   },
 

@@ -91,7 +91,8 @@ export function MaskCreateForm({
   const [photoKey, setPhotoKey] = useState<string>("");
   const [uploading, setUploading] = useState(false);
 
-  const [scanUrl, setScanUrl] = useState<string>("");
+  const [scanStreamUrl, setScanStreamUrl] = useState<string>("");
+  const [scanKey, setScanKey] = useState<string>("");
   const [scanning, setScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
 
@@ -115,6 +116,8 @@ export function MaskCreateForm({
     setUploadedFile(file);
     const localPreview = URL.createObjectURL(file);
     setUploadedPhotoUrl(localPreview);
+    setScanStreamUrl("");
+    setScanKey("");
 
     try {
       setUploading(true);
@@ -135,11 +138,16 @@ export function MaskCreateForm({
     }
 
     setScanning(true);
-    setScanProgress(12);
+    setScanProgress(8);
 
     scanTimer.current = window.setInterval(() => {
-      setScanProgress((p) => Math.min(94, p + 5));
-    }, 450);
+      setScanProgress((p) => {
+        if (p < 30) return p + 4;
+        if (p < 75) return p + 2;
+        if (p < 95) return p + 1;
+        return 95;
+      });
+    }, 600);
 
     try {
       let blob: Blob | File = uploadedFile!;
@@ -148,26 +156,28 @@ export function MaskCreateForm({
         blob = await fetchRes.blob();
       }
 
-      const generatedSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "new-mask";
+      const baseSlug = name.trim() ? name.toLowerCase().replace(/[^a-z0-9]+/g, "-") : "new-mask";
+      const generatedSlug = `${baseSlug}-${Date.now().toString().slice(-4)}`;
       const result = await api.generate3DModel(blob, generatedSlug, artisanSlug);
 
       window.clearInterval(scanTimer.current);
       setScanProgress(100);
-      setScanUrl(result.key);
+      setScanKey(result.key);
+      setScanStreamUrl(result.src);
       setScanning(false);
 
-      toast("3D study generated successfully (256 resolution)", {
-        description: "Laplacian smoothing and studio lighting applied. Ready for AR preview.",
+      toast("3D model generated from photo (256 resolution)", {
+        description: "Laplacian smoothing and studio lighting applied. Interactive preview ready.",
         kind: "success",
       });
-    } catch {
+    } catch (err: unknown) {
       window.clearInterval(scanTimer.current);
-      setScanProgress(100);
+      setScanProgress(0);
       setScanning(false);
-      setScanUrl("models/gini-raksha.glb");
-      toast("3D preview ready", {
-        description: "High-resolution studio scan attached to this mask study.",
-        kind: "success",
+      const msg = err instanceof Error ? err.message : "3D mesh generation encountered an error.";
+      toast("3D reconstruction failed", {
+        description: `${msg}. Please verify your photo and try again.`,
+        kind: "error",
       });
     }
   };
@@ -200,13 +210,15 @@ export function MaskCreateForm({
 
       // 2. Mint Certificate
       const mintRes = await api.mintCertificate({
+        listingId: draft.id,
+        maskSlug: generatedSlug,
         artisanSlug,
         maskTitle: name.trim(),
         tradition,
         woodSpecies,
         priceLKR,
-        photos: photoKey ? [photoKey] : [uploadedPhotoUrl || "workshop-photo-1.jpg"],
-        scanUrl: scanUrl || "models/gini-raksha.glb",
+        photos: photoKey ? [photoKey] : (uploadedPhotoUrl ? [uploadedPhotoUrl] : []),
+        scanUrl: scanKey || "",
       });
 
       setTimeout(async () => {
@@ -577,12 +589,12 @@ export function MaskCreateForm({
           </div>
 
           {/* 3D Model-Viewer Preview if ready */}
-          {scanUrl && (
+          {scanStreamUrl && (
             <div className="mt-4">
               <span className="block text-xs font-medium text-ink2">3D Interactive Preview</span>
               <div className="mt-1.5 h-64 overflow-hidden rounded-lg border border-line bg-s3">
                 <model-viewer
-                  src={scanUrl.startsWith("http") || scanUrl.startsWith("/") ? scanUrl : `/${scanUrl}`}
+                  src={scanStreamUrl}
                   alt="Generated 3D mask study"
                   camera-controls
                   auto-rotate
