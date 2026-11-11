@@ -6,13 +6,20 @@ import { api, mediaStreamUrl } from "@/lib/mock/api";
 import type { Mask } from "@/lib/types";
 import { cn } from "@/utils/cn";
 import { Button, Modal } from "./kit";
-import { ArchivePlate, ImageFrame } from "./MaskImage";
-import { photos } from "@/lib/photos";
+import { ArchivePlate, MaskArtwork } from "./MaskImage";
 
 type ViewerStatus = "idle" | "loading" | "error";
 const WALL_ORBIT = "0deg 90deg 102%";
 // Legacy streamed catalog scans are Z-up and face +X.
 const CATALOG_ORIENTATION = "0deg -90deg -90deg";
+// These bundled scans have been matched to the corresponding studio photographs.
+const REFINED_SCANS = new Set([
+  "gini-raksha",
+  "maha-kola-sanniya",
+  "mudali-the-nobleman",
+  "naga-raja-kolam",
+  "naga-raksha",
+]);
 
 const previewModes = [
   { id: "wall", label: "Wall preview", Icon: Ruler },
@@ -63,13 +70,7 @@ function ViewerFallback({
         <Loader2 className="size-6 animate-spin text-gold" aria-hidden="true" />
       ) : (
         <div className="hidden w-full max-w-[150px] sm:block">
-          <ImageFrame
-            src={mask.image || photos.cobraMask.src}
-            alt={mask.name}
-            ratio="aspect-[4/3]"
-            position={photos.cobraMask.position}
-            className="rounded-md"
-          />
+          <MaskArtwork mask={mask} ratio="aspect-[4/3]" className="rounded-md" />
         </div>
       )}
       <div>
@@ -78,14 +79,16 @@ function ViewerFallback({
             ? "Reconstructing 3D mesh via TripoSR AI…"
             : scanning
               ? "Preparing the 3D study"
-              : "3D scan ready to generate"}
+              : "3D preview unavailable"}
         </p>
         <p className="mx-auto mt-1 max-w-xs text-sm leading-relaxed text-ink3">
           {generating
             ? "Removing background and extracting 3D geometry (~10 seconds)…"
             : scanning
               ? "Loading the photogrammetry viewer…"
-              : `Generate or reload the interactive 3D mesh for ${mask.name} from the studio archive.`}
+              : onGenerateAI
+                ? "Retry the scan or create a 3D preview from the studio photograph."
+                : "The studio scan could not be loaded."}
         </p>
       </div>
       {!scanning && !generating && (
@@ -108,7 +111,7 @@ function ViewerFallback({
   );
 }
 
-/** Inline 3D/AR viewer connected to Media Service S3 stream + local fallback + TripoSR AI reconstruction. */
+/** Inline 3D/AR viewer for studio scans and photo reconstructions. */
 export function ModelViewerPanel({
   mask,
   customSrc,
@@ -123,7 +126,7 @@ export function ModelViewerPanel({
   const libReady = useModelViewerLib();
   const [status, setStatus] = useState<ViewerStatus>("loading");
   const [attempt, setAttempt] = useState(0);
-  const [useStaticFallback, setUseStaticFallback] = useState(false);
+  const [skipRefinedScan, setSkipRefinedScan] = useState(false);
   const [generatedSrc, setGeneratedSrc] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [launchingAR, setLaunchingAR] = useState(false);
@@ -133,16 +136,17 @@ export function ModelViewerPanel({
   const secureAR = window.location.protocol === "https:";
 
   useEffect(() => {
-    setUseStaticFallback(false);
+    setSkipRefinedScan(false);
     setGeneratedSrc(null);
     setStatus("loading");
   }, [mask.slug, customSrc]);
 
+  const useRefinedScan = !customSrc && !generatedSrc && !skipRefinedScan && REFINED_SCANS.has(mask.slug);
   const activeSrc =
     customSrc ||
     generatedSrc ||
-    (useStaticFallback
-      ? `/models/${encodeURIComponent(mask.slug)}.glb?v=2`
+    (useRefinedScan
+      ? `/models/${encodeURIComponent(mask.slug)}.glb?v=3`
       : mediaStreamUrl(`models/${mask.slug}.glb`));
 
   useEffect(() => {
@@ -152,8 +156,8 @@ export function ModelViewerPanel({
     const el = viewerRef.current;
     const onLoad = () => setStatus("idle");
     const onError = () => {
-      if (!customSrc && !generatedSrc && !useStaticFallback) {
-        setUseStaticFallback(true);
+      if (useRefinedScan) {
+        setSkipRefinedScan(true);
       } else {
         setStatus("error");
       }
@@ -172,14 +176,14 @@ export function ModelViewerPanel({
       el.removeEventListener("error", onError);
       el.removeEventListener("ar-status", onARStatus);
     };
-  }, [libReady, attempt, activeSrc, customSrc, generatedSrc, useStaticFallback]);
+  }, [libReady, attempt, activeSrc, useRefinedScan]);
 
   const handleGenerateAI = async () => {
-    if (generating) return;
+    if (generating || !mask.image) return;
     setGenerating(true);
     try {
-      const imgUrl = mask.image || "/images/masks/naga-raja-kolam.jpg";
-      const imgRes = await fetch(imgUrl);
+      const imgRes = await fetch(mask.image);
+      if (!imgRes.ok) throw new Error("Studio photograph could not be loaded");
       const blob = await imgRes.blob();
       const res = await api.generate3DModel(blob, mask.slug, mask.artisanSlug);
       setGeneratedSrc(res.src);
@@ -230,9 +234,9 @@ export function ModelViewerPanel({
       <ViewerFallback
         mask={mask}
         className={className}
-        onGenerateAI={handleGenerateAI}
+        onGenerateAI={mask.image ? handleGenerateAI : undefined}
         onRetry={() => {
-          setUseStaticFallback(false);
+          setSkipRefinedScan(false);
           setStatus("loading");
           setAttempt((n) => n + 1);
         }}
@@ -251,7 +255,7 @@ export function ModelViewerPanel({
         alt={`Interactive 3D study of the ${mask.name}`}
         camera-controls
         auto-rotate={!wallPreview && !platform}
-        orientation={!customSrc && !generatedSrc && !useStaticFallback ? CATALOG_ORIENTATION : undefined}
+        orientation={!customSrc && !generatedSrc && !useRefinedScan ? CATALOG_ORIENTATION : undefined}
         camera-orbit={wallPreview ? WALL_ORBIT : "0deg 75deg 105%"}
         interaction-prompt={wallPreview ? "none" : undefined}
         touch-action="pan-y"

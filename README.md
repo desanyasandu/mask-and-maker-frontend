@@ -61,10 +61,9 @@ Replace the function bodies with `fetch` calls; the UI needs no changes.
 - **Photography** — plates live in `public/images/…`. To add real photos for a mask, set its
   `image` field in `data.ts`. Masks without photos render a seeded **archive plate** (SVG
   line-drawing) so the catalog always looks intentional.
-- **3D models** — the viewer references `/models/{slug}.glb`. Drop GLB files into `public/models/`
-  and both the *3D study* tab and *View on your wall* AR activate automatically (Quick Look /
-  Scene Viewer on phones, QR hand-off on desktop). Until then, graceful fallbacks explain the
-  photogrammetry queue.
+- **3D models** — the viewer uses the media service or a matching scan bundled in `public/models/`.
+  To add a bundled scan, save an upright `{slug}.glb` and add the slug to `REFINED_SCANS` in
+  `ARLauncher.tsx` after checking it against the listing. Both the *3D study* and phone AR use that scan.
 
 ## Design system
 
