@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "@/lib/mock/api";
+import { api, mediaStreamUrl } from "@/lib/mock/api";
 import type { Tradition } from "@/lib/types";
 import { formatMoney } from "@/lib/utils";
 import { useApp } from "@/store/app";
@@ -226,7 +226,41 @@ export function MaskCreateForm({
         setPublishedCertId(certId);
         setPublishedSlug(generatedSlug);
 
-        // 3. Publish to public marketplace
+        // 3. Register directly into public Catalog & Marketplace
+        const publicPhoto = photoKey
+          ? mediaStreamUrl(photoKey)
+          : (uploadedPhotoUrl || "/images/masks/default.jpg");
+
+        try {
+          await api.createMask({
+            slug: generatedSlug,
+            name: name.trim(),
+            sinhala: sinhala.trim() || name.trim(),
+            tradition,
+            artisanSlug,
+            priceLKR,
+            year: new Date().getFullYear(),
+            heightCm,
+            widthCm,
+            depthCm,
+            weightKg,
+            wood: woodSpecies,
+            dyes: selectedPigments.length ? selectedPigments : ["Natural Pigments"],
+            carvingDays,
+            image: publicPhoto,
+            story: story.trim() || `Hand-carved ${name.trim()} traditional wooden mask by master artisan.`,
+            context: `Carved from sacred ${woodSpecies} in the living ${tradition} lineage of Ambalangoda, Sri Lanka.`,
+            arAvailable: !!scanKey || !!scanStreamUrl,
+            verified: true,
+            stock,
+            region: "Ambalangoda, Sri Lanka",
+            certId,
+          });
+        } catch (catErr) {
+          console.warn("Direct catalog registration:", catErr);
+        }
+
+        // 4. Publish to public marketplace
         if (draft.id) {
           await api.publishListing(draft.id);
         }

@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "@/lib/mock/api";
+import { api, mediaStreamUrl } from "@/lib/mock/api";
 import type { Mask } from "@/lib/types";
 import { formatMoney } from "@/lib/utils";
 import { useApp } from "@/store/app";
@@ -35,8 +35,53 @@ export function ArtisanCollection({
   const fetchCollection = async () => {
     try {
       setLoading(true);
-      const list = await api.masksByArtisan(artisanSlug);
-      setMasks(list);
+      const [list, dashData] = await Promise.all([
+        api.masksByArtisan(artisanSlug).catch(() => []),
+        api.getPortalDashboard(artisanSlug).catch(() => null),
+      ]);
+
+      const portalListings = (dashData as any)?.listings || [];
+      const portalMasks: Mask[] = portalListings.map((l: any) => ({
+        slug: l.maskSlug || l.id,
+        name: l.name,
+        sinhala: l.sinhala || l.name,
+        tradition: l.tradition || "raksha",
+        artisanSlug: l.artisanSlug || artisanSlug,
+        priceLKR: l.priceLKR || 85000,
+        priceUSD: Math.round((l.priceLKR || 85000) * 0.0033),
+        year: 2026,
+        heightCm: 44,
+        widthCm: 36,
+        depthCm: 18,
+        weightKg: 1.4,
+        sizeCategory: "medium" as const,
+        wood: l.woodSpecies || "Kaduru",
+        dyes: ["Natural Pigments"],
+        carvingDays: 24,
+        image: l.photos?.[0]
+          ? l.photos[0].startsWith("http") || l.photos[0].startsWith("/")
+            ? l.photos[0]
+            : mediaStreamUrl(l.photos[0])
+          : "/images/masks/default.jpg",
+        plateSeed: 1,
+        plateVariant: 0,
+        story: "Traditional mask",
+        context: "Ambalangoda lineage",
+        arAvailable: !!l.scanUrl,
+        verified: !!l.certificateId,
+        stock: l.stock ?? 1,
+        region: "Ambalangoda",
+        certId: l.certificateId || "",
+      }));
+
+      const combined = [...list];
+      portalMasks.forEach((pm) => {
+        if (!combined.some((m) => m.slug === pm.slug)) {
+          combined.push(pm);
+        }
+      });
+
+      setMasks(combined);
     } catch {
       toast("Failed to load collection", { kind: "error" });
     } finally {

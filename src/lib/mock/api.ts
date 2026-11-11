@@ -232,6 +232,40 @@ export const api = {
     return list;
   },
 
+  async createMask(payload: {
+    slug: string;
+    name: string;
+    sinhala?: string;
+    tradition: Tradition;
+    artisanSlug: string;
+    priceLKR: number;
+    year?: number;
+    heightCm?: number;
+    widthCm?: number;
+    depthCm?: number;
+    weightKg?: number;
+    wood?: string;
+    dyes?: string[];
+    carvingDays?: number;
+    image?: string;
+    story?: string;
+    context?: string;
+    arAvailable?: boolean;
+    verified?: boolean;
+    stock?: number;
+    region?: string;
+    certId?: string;
+  }): Promise<Mask> {
+    const data = await requestJson<{ mask?: Mask } | Mask>("/api/masks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const mask = (data as { mask?: Mask }).mask || (data as Mask);
+    recordMasks([mask]);
+    return mask;
+  },
+
   async listTraditions(): Promise<TraditionDoc[]> {
     const data = await requestJson<TraditionDoc[]>("/api/traditions");
     return Array.isArray(data) ? data : [];

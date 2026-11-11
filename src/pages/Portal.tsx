@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "@/lib/mock/api";
+import { api, mediaStreamUrl } from "@/lib/mock/api";
 import { usePageMeta } from "@/lib/meta";
 import type { Artisan, Certificate, Mask, Order, PortalDashboardData } from "@/lib/types";
 import { formatMoney } from "@/lib/utils";
@@ -70,10 +70,14 @@ export default function Portal() {
   const userWorkshopSlug =
     user?.artisanSlug ||
     (user?.name ? user.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") : "my-workshop");
-  const [selectedWorkshopSlug, setSelectedWorkshopSlug] = useState<string>(
-    user?.artisanSlug || "my-workshop"
-  );
+  const [selectedWorkshopSlug, setSelectedWorkshopSlug] = useState<string>(userWorkshopSlug);
   const [artisan, setArtisan] = useState<Artisan | null>(null);
+
+  useEffect(() => {
+    if (userWorkshopSlug) {
+      setSelectedWorkshopSlug(userWorkshopSlug);
+    }
+  }, [userWorkshopSlug]);
 
   const isOwnWorkshop = selectedWorkshopSlug === userWorkshopSlug || selectedWorkshopSlug === "my-workshop";
   const currentArtisanName = isOwnWorkshop
@@ -412,7 +416,48 @@ function Dashboard({
       api.masksByArtisan(artisanSlug).catch(() => []),
       api.getPortalDashboard(artisanSlug).catch(() => null),
     ]).then(([masksList, dashData]) => {
-      setMyMasks(masksList);
+      const portalListings = (dashData as any)?.listings || [];
+      const portalMasks: Mask[] = portalListings.map((l: any) => ({
+        slug: l.maskSlug || l.id,
+        name: l.name,
+        sinhala: l.sinhala || l.name,
+        tradition: l.tradition || "raksha",
+        artisanSlug: l.artisanSlug || artisanSlug,
+        priceLKR: l.priceLKR || 85000,
+        priceUSD: Math.round((l.priceLKR || 85000) * 0.0033),
+        year: 2026,
+        heightCm: 44,
+        widthCm: 36,
+        depthCm: 18,
+        weightKg: 1.4,
+        sizeCategory: "medium" as const,
+        wood: l.woodSpecies || "Kaduru",
+        dyes: ["Natural Pigments"],
+        carvingDays: 24,
+        image: l.photos?.[0]
+          ? l.photos[0].startsWith("http") || l.photos[0].startsWith("/")
+            ? l.photos[0]
+            : mediaStreamUrl(l.photos[0])
+          : "/images/masks/default.jpg",
+        plateSeed: 1,
+        plateVariant: 0,
+        story: "Traditional mask",
+        context: "Ambalangoda lineage",
+        arAvailable: !!l.scanUrl,
+        verified: !!l.certificateId,
+        stock: l.stock ?? 1,
+        region: "Ambalangoda",
+        certId: l.certificateId || "",
+      }));
+
+      const combined = [...masksList];
+      portalMasks.forEach((pm) => {
+        if (!combined.some((m) => m.slug === pm.slug)) {
+          combined.push(pm);
+        }
+      });
+
+      setMyMasks(combined);
       setDashboard(dashData);
     });
   }, [artisanSlug]);
