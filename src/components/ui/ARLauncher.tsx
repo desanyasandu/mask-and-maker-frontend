@@ -250,6 +250,7 @@ export function ModelViewerPanel({
         poster={mask.image}
         alt={`Interactive 3D study of the ${mask.name}`}
         camera-controls
+<<<<<<< HEAD
         auto-rotate={!wallPreview && !platform}
         orientation={!customSrc && !generatedSrc && !useStaticFallback ? CATALOG_ORIENTATION : undefined}
         camera-orbit={wallPreview ? WALL_ORBIT : undefined}
@@ -260,6 +261,19 @@ export function ModelViewerPanel({
         ar-placement="wall"
         shadow-intensity={wallPreview ? 0 : 0.85}
         exposure={wallPreview ? 0.95 : 1.05}
+=======
+        auto-rotate={!previewMode}
+        orientation={!customSrc && !generatedSrc ? CATALOG_ORIENTATION : undefined}
+        camera-orbit={previewMode ? WALL_ORBIT : "0deg 75deg 105%"}
+        interaction-prompt={previewMode ? "none" : undefined}
+        touch-action={previewMode ? "pan-y" : undefined}
+        ar={enableAR}
+        ar-modes="webxr scene-viewer quick-look"
+        shadow-intensity={previewMode ? 0 : 0.85}
+        shadow-softness="0.75"
+        environment-image="neutral"
+        exposure={previewMode ? 0.95 : 1.05}
+>>>>>>> fd8fbe8e438787647d1e352188804b7e5d21f8f3
         loading="eager"
         style={{ "--ar-button-display": "none" } as React.CSSProperties}
         className={cn("block size-full bg-transparent", !wallPreview && "min-h-[340px]")}
