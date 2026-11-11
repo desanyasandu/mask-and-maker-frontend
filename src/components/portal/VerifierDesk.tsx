@@ -1,19 +1,10 @@
 import {
   AlertTriangle,
-  Check,
   CheckCircle2,
-  ExternalLink,
-  FileCheck2,
   Fingerprint,
-  Layers,
   Loader2,
-  QrCode,
-  Radio,
   Search,
-  Shield,
-  ShieldAlert,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import { useState } from "react";
 import { api } from "@/lib/mock/api";
@@ -26,13 +17,6 @@ export function VerifierDesk() {
   const [query, setQuery] = useState("MM-2025-0338");
   const [loading, setLoading] = useState(false);
   const [certificate, setCertificate] = useState<Certificate | null>(null);
-  const [nfcResult, setNfcResult] = useState<{
-    authenticated: boolean;
-    certId?: string;
-    maskName?: string;
-    artisanName?: string;
-    tapCount?: number;
-  } | null>(null);
 
   const toast = useApp((s) => s.toast);
 
@@ -43,7 +27,6 @@ export function VerifierDesk() {
 
     setLoading(true);
     setCertificate(null);
-    setNfcResult(null);
 
     try {
       if (clean.startsWith("04:") || clean.includes(":")) {
@@ -59,9 +42,9 @@ export function VerifierDesk() {
         }
       } else {
         // Certificate ID query
-        const cert = await api.verifyCertificate(clean);
-        setCertificate(cert);
-        if (cert) {
+        const res = await api.verifyCertificate(clean);
+        if (res && res.cert) {
+          setCertificate(res.cert);
           toast(`Certificate ${clean} verified on Polygon`, { kind: "success" });
         } else {
           toast("No certificate found with that ID", { kind: "error" });
@@ -78,7 +61,7 @@ export function VerifierDesk() {
     <div className="mt-8 space-y-8">
       {/* Verifier Header Banner */}
       <div className="edge relative overflow-hidden rounded-lg bg-s1 p-6">
-        <BorderBeam size={180} duration={14} colorFrom="#10b981" colorTo="#c9a45c" />
+        <BorderBeam duration={14} />
         <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400">
           <Fingerprint className="size-3.5" />
           Heritage Authentication &amp; NFC Tag Desk

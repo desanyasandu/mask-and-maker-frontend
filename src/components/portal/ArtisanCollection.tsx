@@ -1,16 +1,10 @@
 import {
-  Boxes,
-  Check,
   Eye,
   FileCheck2,
-  Layers,
   Loader2,
   Package,
   Plus,
   RefreshCw,
-  Ruler,
-  ScanLine,
-  Sparkles,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -36,6 +30,7 @@ export function ArtisanCollection({
   const [loading, setLoading] = useState(true);
   const [updatingSlug, setUpdatingSlug] = useState<string | null>(null);
   const toast = useApp((s) => s.toast);
+  const currency = useApp((s) => s.currency);
 
   const fetchCollection = async () => {
     try {
@@ -98,7 +93,7 @@ export function ArtisanCollection({
         </div>
         <div className="edge rounded-lg bg-s1 p-5">
           <span className="text-xs text-ink3">Catalogue Retail Value</span>
-          <p className="mt-1 font-display text-2xl text-gold">{formatMoney(totalValueLKR)}</p>
+          <p className="mt-1 font-display text-2xl text-gold">{formatMoney(totalValueLKR, currency)}</p>
           <span className="mt-1 block text-[11px] text-ink3">61% payable upon customer purchase</span>
         </div>
       </div>
@@ -196,9 +191,9 @@ export function ArtisanCollection({
                     <div className="mt-3 flex items-center justify-between border-t border-line/60 pt-3">
                       <div>
                         <span className="block font-mono text-sm font-bold text-gold">
-                          {formatMoney(mask.priceLKR)}
+                          {formatMoney(mask.priceLKR, currency)}
                         </span>
-                        <span className="text-[10px] text-ink3">≈ ${(mask.priceUSD || mask.priceLKR / 303).toFixed(0)} USD</span>
+                        <span className="text-[10px] text-ink3">≈ ${(mask.priceLKR / 303).toFixed(0)} USD</span>
                       </div>
                       <div className="text-right">
                         <span className="block text-[11px] text-ink3">

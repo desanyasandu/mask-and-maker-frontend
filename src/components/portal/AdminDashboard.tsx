@@ -1,22 +1,9 @@
 import {
   Boxes,
   Check,
-  CheckCircle2,
-  Clock,
   DollarSign,
-  Download,
-  Eye,
-  FileCheck2,
-  Filter,
-  Layers,
-  Loader2,
-  Package,
   RefreshCw,
-  Search,
-  Shield,
   ShieldCheck,
-  Sparkles,
-  TreePine,
   Truck,
   Users,
 } from "lucide-react";
@@ -37,6 +24,7 @@ export function AdminDashboard() {
   const [artisans, setArtisans] = useState<Artisan[]>([]);
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
   const toast = useApp((s) => s.toast);
+  const currency = useApp((s) => s.currency);
 
   const fetchData = async () => {
     try {
@@ -60,7 +48,7 @@ export function AdminDashboard() {
     fetchData();
   }, []);
 
-  const handleUpdateOrderStatus = async (orderId: string, newStatus: string) => {
+  const handleUpdateOrderStatus = async (orderId: string, newStatus: Order["status"]) => {
     setUpdatingOrderId(orderId);
     try {
       const ok = await api.updateOrderStatus(orderId, newStatus);
@@ -70,15 +58,7 @@ export function AdminDashboard() {
             o.id === orderId
               ? {
                   ...o,
-                  status: newStatus as Order["status"],
-                  history: [
-                    ...(o.history || []),
-                    {
-                      status: newStatus as Order["status"],
-                      note: `Status updated by platform curator to ${newStatus}`,
-                      timestamp: new Date().toISOString(),
-                    },
-                  ],
+                  status: newStatus,
                 }
               : o
           )
@@ -103,7 +83,7 @@ export function AdminDashboard() {
     <div className="mt-8 space-y-8">
       {/* Platform Executive Header Banner */}
       <div className="edge relative overflow-hidden rounded-lg bg-s1 p-6">
-        <BorderBeam size={200} duration={16} colorFrom="#c9a45c" colorTo="#3b82f6" />
+        <BorderBeam duration={16} />
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <div className="inline-flex items-center gap-1.5 rounded-full border border-gold/40 bg-gold/10 px-2.5 py-0.5 text-[11px] font-medium text-gold">
@@ -130,7 +110,7 @@ export function AdminDashboard() {
             <span className="block text-[11px] font-medium uppercase tracking-wider text-gold">
               Artisan Guild (61%)
             </span>
-            <p className="mt-1 font-mono text-xl font-bold text-ink">{formatMoney(artisanPool)}</p>
+            <p className="mt-1 font-mono text-xl font-bold text-ink">{formatMoney(artisanPool, currency)}</p>
             <span className="mt-0.5 block text-[10px] text-ink3">Disbursed directly to makers</span>
           </div>
 
@@ -138,7 +118,7 @@ export function AdminDashboard() {
             <span className="block text-[11px] font-medium uppercase tracking-wider text-emerald-400">
               Reforestation (19%)
             </span>
-            <p className="mt-1 font-mono text-xl font-bold text-ink">{formatMoney(reforestationPool)}</p>
+            <p className="mt-1 font-mono text-xl font-bold text-ink">{formatMoney(reforestationPool, currency)}</p>
             <span className="mt-0.5 block text-[10px] text-ink3">Kaduru sanctuary planting</span>
           </div>
 
@@ -146,7 +126,7 @@ export function AdminDashboard() {
             <span className="block text-[11px] font-medium uppercase tracking-wider text-blue-400">
               Apprenticeship (12%)
             </span>
-            <p className="mt-1 font-mono text-xl font-bold text-ink">{formatMoney(guildPool)}</p>
+            <p className="mt-1 font-mono text-xl font-bold text-ink">{formatMoney(guildPool, currency)}</p>
             <span className="mt-0.5 block text-[10px] text-ink3">Youth carver tooling stipends</span>
           </div>
 
@@ -154,7 +134,7 @@ export function AdminDashboard() {
             <span className="block text-[11px] font-medium uppercase tracking-wider text-ink3">
               Platform Ops (8%)
             </span>
-            <p className="mt-1 font-mono text-xl font-bold text-ink">{formatMoney(platformOpsPool)}</p>
+            <p className="mt-1 font-mono text-xl font-bold text-ink">{formatMoney(platformOpsPool, currency)}</p>
             <span className="mt-0.5 block text-[10px] text-ink3">AWS compute, IPFS, 3D AI</span>
           </div>
         </div>
@@ -217,7 +197,7 @@ export function AdminDashboard() {
               <thead className="border-b border-line bg-s2/80 text-[11px] font-medium text-ink3">
                 <tr>
                   <th className="px-4 py-3">Order ID</th>
-                  <th className="px-4 py-3">Destination</th>
+                  <th className="px-4 py-3">Placed At</th>
                   <th className="px-4 py-3">Items</th>
                   <th className="px-4 py-3">Total (LKR)</th>
                   <th className="px-4 py-3">Status</th>
@@ -228,32 +208,29 @@ export function AdminDashboard() {
                 {orders.map((o) => (
                   <tr key={o.id} className="transition-colors hover:bg-s2/40">
                     <td className="px-4 py-3 font-mono font-medium text-gold">{o.id}</td>
-                    <td className="px-4 py-3">
-                      <span className="block font-medium text-ink">{o.shippingAddress?.fullName || o.shippingAddress?.city}</span>
-                      <span className="text-[11px] text-ink3">{o.shippingAddress?.country || "Sri Lanka"}</span>
+                    <td className="px-4 py-3 text-ink2">
+                      {o.placedAt ? new Date(o.placedAt).toLocaleDateString() : "Recent"}
                     </td>
                     <td className="px-4 py-3">
-                      {o.items?.map((item) => (
-                        <span key={item.slug} className="block text-ink2">
-                          {item.name || item.slug} × {item.qty}
+                      {o.items?.map((item, idx) => (
+                        <span key={idx} className="block text-ink2">
+                          {item.slug} × {item.qty}
                         </span>
                       ))}
                     </td>
                     <td className="px-4 py-3 font-mono font-semibold text-ink">
-                      {formatMoney(o.totalLKR || 0)}
+                      {formatMoney(o.totalLKR || 0, currency)}
                     </td>
                     <td className="px-4 py-3">
                       <span
                         className={cn(
                           "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
                           o.status === "delivered" && "bg-emerald-500/15 text-emerald-400",
-                          o.status === "in_transit" && "bg-blue-500/15 text-blue-400",
-                          o.status === "preparing" && "bg-amber-500/15 text-amber-400",
-                          !["delivered", "in_transit", "preparing"].includes(o.status) &&
-                            "bg-s3 text-ink2"
+                          o.status === "in-transit" && "bg-blue-500/15 text-blue-400",
+                          o.status === "preparing" && "bg-amber-500/15 text-amber-400"
                         )}
                       >
-                        {o.status.replace("_", " ")}
+                        {o.status}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -261,13 +238,13 @@ export function AdminDashboard() {
                         {o.status === "preparing" && (
                           <button
                             disabled={updatingOrderId === o.id}
-                            onClick={() => handleUpdateOrderStatus(o.id, "in_transit")}
+                            onClick={() => handleUpdateOrderStatus(o.id, "in-transit")}
                             className="rounded border border-blue-500/40 bg-blue-500/10 px-2.5 py-1 text-[11px] font-medium text-blue-400 hover:bg-blue-500/20"
                           >
                             Mark In Transit
                           </button>
                         )}
-                        {o.status === "in_transit" && (
+                        {o.status === "in-transit" && (
                           <button
                             disabled={updatingOrderId === o.id}
                             onClick={() => handleUpdateOrderStatus(o.id, "delivered")}
@@ -325,7 +302,7 @@ export function AdminDashboard() {
                         <div>
                           <span className="font-medium text-ink">{m.name}</span>
                           {m.featured && (
-                            <span className="ml-2 rounded bg-gold/20 px-1.5 py-0.2 text-[9px] font-semibold text-gold">
+                            <span className="ml-2 rounded bg-gold/20 px-1.5 py-0.5 text-[9px] font-semibold text-gold">
                               Featured
                             </span>
                           )}
@@ -335,7 +312,7 @@ export function AdminDashboard() {
                     <td className="px-4 py-3 uppercase tracking-wider text-ink3">{m.tradition}</td>
                     <td className="px-4 py-3 font-mono text-[11px] text-ink2">{m.artisanSlug}</td>
                     <td className="px-4 py-3 font-mono font-medium text-ink">
-                      {formatMoney(m.priceLKR)}
+                      {formatMoney(m.priceLKR, currency)}
                     </td>
                     <td className="px-4 py-3">
                       <span
@@ -393,7 +370,7 @@ export function AdminDashboard() {
               <p className="mt-3 text-xs leading-relaxed text-ink2">{a.role}</p>
 
               <div className="mt-4 flex items-center justify-between border-t border-line/60 pt-3 text-xs">
-                <span className="text-ink3">{a.yearsOfMastery || 20} Years Mastery</span>
+                <span className="text-ink3">{new Date().getFullYear() - (a.since || 2000)} Years Mastery</span>
                 <span className="flex items-center gap-1 font-medium text-emerald-400">
                   <ShieldCheck className="size-3.5 text-gold" /> Verified Maker
                 </span>

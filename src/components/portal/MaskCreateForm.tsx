@@ -1,17 +1,12 @@
 import {
-  Boxes,
   Camera,
   Check,
   ChevronRight,
   DollarSign,
   FileCheck2,
-  Image as ImageIcon,
-  Info,
   Loader2,
-  RotateCcw,
   Ruler,
   Sparkles,
-  TreePine,
   Upload,
   Wand2,
 } from "lucide-react";
@@ -68,13 +63,13 @@ export function MaskCreateForm({
   onSuccess,
 }: MaskCreateFormProps) {
   const toast = useApp((s) => s.toast);
+  const currency = useApp((s) => s.currency);
 
   // Form State
   const [name, setName] = useState("");
   const [sinhala, setSinhala] = useState("");
   const [tradition, setTradition] = useState<Tradition>("raksha");
   const [woodSpecies, setWoodSpecies] = useState(WOOD_SPECIES[0]);
-  const [sizeCategory, setSizeCategory] = useState<"compact" | "display" | "monumental">("display");
   const [heightCm, setHeightCm] = useState(44);
   const [widthCm, setWidthCm] = useState(36);
   const [depthCm, setDepthCm] = useState(18);
@@ -87,7 +82,6 @@ export function MaskCreateForm({
     "Beeswax polish",
   ]);
   const [story, setStory] = useState("");
-  const [context, setContext] = useState("");
   const [priceLKR, setPriceLKR] = useState<number>(85000);
   const [stock, setStock] = useState<number>(1);
 
@@ -166,7 +160,7 @@ export function MaskCreateForm({
         description: "Laplacian smoothing and studio lighting applied. Ready for AR preview.",
         kind: "success",
       });
-    } catch (err: unknown) {
+    } catch {
       window.clearInterval(scanTimer.current);
       setScanProgress(100);
       setScanning(false);
@@ -252,7 +246,7 @@ export function MaskCreateForm({
       <div className="space-y-6 lg:col-span-7">
         {/* 1. Identity & Tradition */}
         <section className="edge relative overflow-hidden rounded-lg bg-s1 p-6" aria-label="Mask Identity">
-          <BorderBeam size={160} duration={14} colorFrom="#c9a45c" colorTo="#85642a" />
+          <BorderBeam duration={14} />
           <h2 className="flex items-center gap-2 font-display text-lg text-ink">
             <Sparkles className="size-4 text-gold" />
             1. Mask Identity &amp; Sacred Lore
@@ -494,19 +488,19 @@ export function MaskCreateForm({
           <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <div className="rounded-md border border-gold/40 bg-gold/[0.08] p-2.5 text-center">
               <span className="block text-[10px] uppercase tracking-wider text-gold">Master Artisan (61%)</span>
-              <span className="mt-1 block font-mono text-xs font-bold text-ink">{formatMoney(artisanShare)}</span>
+              <span className="mt-1 block font-mono text-xs font-bold text-ink">{formatMoney(artisanShare, currency)}</span>
             </div>
             <div className="rounded-md border border-emerald-500/30 bg-emerald-500/[0.06] p-2.5 text-center">
               <span className="block text-[10px] uppercase tracking-wider text-emerald-400">Reforestation (19%)</span>
-              <span className="mt-1 block font-mono text-xs font-bold text-ink">{formatMoney(reforestationShare)}</span>
+              <span className="mt-1 block font-mono text-xs font-bold text-ink">{formatMoney(reforestationShare, currency)}</span>
             </div>
             <div className="rounded-md border border-blue-500/30 bg-blue-500/[0.06] p-2.5 text-center">
               <span className="block text-[10px] uppercase tracking-wider text-blue-400">Guild Fund (12%)</span>
-              <span className="mt-1 block font-mono text-xs font-bold text-ink">{formatMoney(guildShare)}</span>
+              <span className="mt-1 block font-mono text-xs font-bold text-ink">{formatMoney(guildShare, currency)}</span>
             </div>
             <div className="rounded-md border border-line bg-s2 p-2.5 text-center">
               <span className="block text-[10px] uppercase tracking-wider text-ink3">Platform Ops (8%)</span>
-              <span className="mt-1 block font-mono text-xs font-bold text-ink">{formatMoney(platformShare)}</span>
+              <span className="mt-1 block font-mono text-xs font-bold text-ink">{formatMoney(platformShare, currency)}</span>
             </div>
           </div>
         </section>
