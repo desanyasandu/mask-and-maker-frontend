@@ -29,7 +29,7 @@ on:
         default: ""
 
 env:
-  DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USERNAME || 'harshaitsme' }}
+  DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USERNAME || 'oneengine' }}
   IMAGE_NAME: maskandmaker-frontend
 
 jobs:
@@ -132,7 +132,55 @@ jobs:
           cache-to: type=gha,mode=max,scope=frontend
 
   # ==============================================================
-  # Stage 3: Deployment Summary & Status Notification
+  # Stage 3: Auto-Update GitOps Repository (Triggers ArgoCD)
+  # ==============================================================
+  sync-gitops:
+    name: "GitOps Continuous Deployment"
+    needs: [build-and-push]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for GitOps Access Token
+        id: check_token
+        run: |
+          if [ -n "${{ secrets.GITOPS_TOKEN }}" ]; then
+            echo "has_token=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_token=false" >> $GITHUB_OUTPUT
+            echo "⚠️ GITOPS_TOKEN secret is not configured in this repository."
+            echo "ℹ️ To enable auto-deployment to Kushan20070126/gitops-mask_and_maker, add a Personal Access Token as 'GITOPS_TOKEN'."
+          fi
+
+      - name: Checkout GitOps Repository
+        if: steps.check_token.outputs.has_token == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: Kushan20070126/gitops-mask_and_maker
+          token: ${{ secrets.GITOPS_TOKEN }}
+          ref: main
+
+      - name: Update Frontend Image Tag in Helm values.yaml
+        if: steps.check_token.outputs.has_token == 'true'
+        run: |
+          IMAGE_TAG="sha-${GITHUB_SHA::7}"
+          echo "Updating frontend image tag to ${IMAGE_TAG}..."
+          sed -i "/frontend:/,/replicas:/ s/tag:.*/tag: ${IMAGE_TAG}/" charts/maskandmaker-platform/values.yaml
+
+      - name: Commit and Push to GitOps
+        if: steps.check_token.outputs.has_token == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add charts/maskandmaker-platform/values.yaml
+          if git diff --staged --quiet; then
+            echo "No tag changes detected."
+          else
+            git commit -m "chore(gitops): auto-deploy frontend sha-${GITHUB_SHA::7}"
+            git push origin main
+          fi
+
+  # ==============================================================
+  # Stage 4: Deployment Summary & Status Notification
   # ==============================================================
   ci-summary:
     name: "CI/CD Summary Report"
