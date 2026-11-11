@@ -87,6 +87,8 @@ export default function Login() {
 
     if (isPlatformAdmin(u)) {
       u.role = "admin";
+    } else if (u.role === "admin") {
+      u.role = "buyer";
     }
 
     signIn(u);

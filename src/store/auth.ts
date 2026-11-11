@@ -25,14 +25,24 @@ const isUser = (v: unknown): v is AuthUser => {
 
 export const ADMIN_EMAILS = [
   "kushanherath59@gmail.com",
-  "admin@maskandmaker.lk",
 ];
 
+/** Strict admin check — ONLY true if user.email matches authorized admin email */
 export const isPlatformAdmin = (user?: AuthUser | null): boolean => {
-  if (!user) return false;
-  if (user.role === "admin") return true;
-  if (user.email && ADMIN_EMAILS.includes(user.email.toLowerCase().trim())) return true;
-  return false;
+  if (!user || !user.email) return false;
+  return ADMIN_EMAILS.includes(user.email.toLowerCase().trim());
+};
+
+/** Sanitizes user role — elevates admin email, but strips admin role from any other email */
+export const sanitizeAuthUser = (user: AuthUser | null): AuthUser | null => {
+  if (!user) return null;
+  const admin = isPlatformAdmin(user);
+  if (admin) {
+    return { ...user, role: "admin" };
+  }
+  // For ANY other email, NEVER allow role to be "admin"
+  const safeRole = user.role === "admin" ? "buyer" : (user.role || "buyer");
+  return { ...user, role: safeRole };
 };
 
 export const useAuth = create<AuthState>()(
@@ -40,11 +50,7 @@ export const useAuth = create<AuthState>()(
     (set) => ({
       user: null,
       signIn: (user) => {
-        const enriched = {
-          ...user,
-          role: isPlatformAdmin(user) ? ("admin" as const) : (user.role || ("buyer" as const)),
-        };
-        set({ user: enriched });
+        set({ user: sanitizeAuthUser(user) });
       },
       signOut: () => set({ user: null }),
     }),
@@ -55,11 +61,7 @@ export const useAuth = create<AuthState>()(
       merge: (persisted, current) => {
         const rawUser = (persisted as Partial<AuthState> | undefined)?.user;
         if (!isUser(rawUser)) return { ...current, user: null };
-        const user = {
-          ...rawUser,
-          role: isPlatformAdmin(rawUser) ? ("admin" as const) : (rawUser.role || ("buyer" as const)),
-        };
-        return { ...current, user };
+        return { ...current, user: sanitizeAuthUser(rawUser) };
       },
     }
   )

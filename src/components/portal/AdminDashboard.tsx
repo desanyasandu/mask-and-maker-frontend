@@ -3,6 +3,7 @@ import {
   Check,
   DollarSign,
   RefreshCw,
+  ShieldAlert,
   ShieldCheck,
   Truck,
   Users,
@@ -13,11 +14,13 @@ import { api } from "@/lib/mock/api";
 import type { Artisan, Mask, Order } from "@/lib/types";
 import { formatMoney } from "@/lib/utils";
 import { useApp } from "@/store/app";
-import { useAuth } from "@/store/auth";
+import { isPlatformAdmin, useAuth } from "@/store/auth";
 import { cn } from "@/utils/cn";
 import { BorderBeam } from "@/components/ui/surfaces";
 
 export function AdminDashboard() {
+  const user = useAuth((s) => s.user);
+  const isAdmin = isPlatformAdmin(user);
   const [tab, setTab] = useState<"orders" | "catalog" | "artisans" | "settlement">("orders");
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -26,9 +29,9 @@ export function AdminDashboard() {
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
   const toast = useApp((s) => s.toast);
   const currency = useApp((s) => s.currency);
-  const user = useAuth((s) => s.user);
 
   const fetchData = async () => {
+    if (!isAdmin) return;
     try {
       setLoading(true);
       const [orderList, maskList, artisanList] = await Promise.all([
@@ -47,8 +50,24 @@ export function AdminDashboard() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (isAdmin) {
+      fetchData();
+    }
+  }, [isAdmin]);
+
+  if (!isAdmin) {
+    return (
+      <div className="mx-auto mt-12 max-w-lg rounded-xl border border-red-500/30 bg-red-950/20 p-8 text-center backdrop-blur">
+        <div className="mx-auto flex size-14 items-center justify-center rounded-full border border-red-500/40 bg-red-500/10 text-red-400">
+          <ShieldAlert className="size-7" />
+        </div>
+        <h2 className="mt-4 font-display text-xl text-ink">Admin Control Tower Restricted</h2>
+        <p className="mt-2 text-xs leading-relaxed text-ink3">
+          Platform management, GMV telemetry, and order dispatching are strictly restricted to authorized platform administrators. Access is provisioned exclusively for <span className="font-mono text-gold">kushanherath59@gmail.com</span>.
+        </p>
+      </div>
+    );
+  }
 
   const handleUpdateOrderStatus = async (orderId: string, newStatus: Order["status"]) => {
     setUpdatingOrderId(orderId);

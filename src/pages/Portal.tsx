@@ -6,7 +6,6 @@ import {
   Drama,
   HandCoins,
   Languages,
-  Lock,
   MapPin,
   ScanLine,
   ShieldAlert,
@@ -50,12 +49,22 @@ export default function Portal() {
   const toast = useApp((s) => s.toast);
   const isAdmin = isPlatformAdmin(user);
 
-  // Initialize role: admin users default to "admin", others default to "buyer" or their non-admin role
+  // Initialize role: ONLY authorized platform admin defaults to "admin"
   const [role, setRole] = useState<Role>(() => {
     if (isAdmin) return "admin";
     return user?.role && user.role !== "admin" ? user.role : "buyer";
   });
   const [tab, setTab] = useState("dashboard");
+
+  // Strict Security Guard: If not admin, immediately eject from admin role
+  useEffect(() => {
+    if (!isAdmin && role === "admin") {
+      setRole("buyer");
+    }
+  }, [isAdmin, role]);
+
+  // Non-admins never even see the Admin Control Tower tab in the role list
+  const availableRoles = roles.filter((r) => r.id !== "admin" || isAdmin);
 
   // Workshop selection
   const userWorkshopSlug =
@@ -96,48 +105,39 @@ export default function Portal() {
                   : "bg-gold/15 text-gold"
               )}
             >
-              {isAdmin ? "Platform Admin" : role}
+              {isAdmin ? "Platform Admin" : user.role || role}
             </span>
           )}
         </div>
 
         <div className="flex items-center gap-1 rounded-lg border border-line bg-s1 p-0.5" role="group" aria-label="Portal role mode">
-          {roles.map((r) => {
-            const isRestrictedAdmin = r.id === "admin" && !isAdmin;
-            return (
-              <button
-                key={r.id}
-                onClick={() => {
-                  if (isRestrictedAdmin) {
-                    toast("Admin privileges required", {
-                      description: "The Admin Control Tower is strictly restricted to platform administrators.",
-                      kind: "error",
-                    });
-                    setRole("admin");
-                    return;
-                  }
-                  setRole(r.id);
-                }}
-                aria-pressed={role === r.id}
-                className={cn(
-                  "relative flex items-center gap-1.5 h-7 rounded-md px-2.5 text-[12px] font-medium transition-colors duration-180",
-                  role === r.id
-                    ? "bg-s3 text-gold"
-                    : isRestrictedAdmin
-                    ? "text-ink4 opacity-60"
-                    : "text-ink3 hover:text-ink2"
-                )}
-              >
-                {isRestrictedAdmin && <Lock className="size-3 text-ink4" />}
-                {r.label}
-                {r.id === "admin" && isAdmin && (
-                  <span className="rounded bg-gold/20 px-1 py-0.2 text-[9px] font-bold text-gold">
-                    ADMIN
-                  </span>
-                )}
-              </button>
-            );
-          })}
+          {availableRoles.map((r) => (
+            <button
+              key={r.id}
+              onClick={() => {
+                if (r.id === "admin" && !isAdmin) {
+                  toast("Admin privileges required", {
+                    description: "The Admin Control Tower is strictly restricted to platform administrators.",
+                    kind: "error",
+                  });
+                  return;
+                }
+                setRole(r.id);
+              }}
+              aria-pressed={role === r.id}
+              className={cn(
+                "relative flex items-center gap-1.5 h-7 rounded-md px-2.5 text-[12px] font-medium transition-colors duration-180",
+                role === r.id ? "bg-s3 text-gold" : "text-ink3 hover:text-ink2"
+              )}
+            >
+              {r.label}
+              {r.id === "admin" && isAdmin && (
+                <span className="rounded bg-gold/20 px-1 py-0.2 text-[9px] font-bold text-gold">
+                  ADMIN
+                </span>
+              )}
+            </button>
+          ))}
         </div>
       </div>
 
