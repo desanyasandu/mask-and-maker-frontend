@@ -490,7 +490,9 @@ export const api = {
     const form = new FormData();
     form.append("maskSlug", maskSlug);
     form.append("artisanSlug", artisanSlug);
-    form.append("mc_resolution", "128");
+    form.append("mc_resolution", "256");
+    form.append("smooth_mesh", "true");
+    form.append("orientation_fix", "true");
     form.append("image", imageFile, imageFile instanceof File ? imageFile.name : `${maskSlug}.jpg`);
 
     const res = await fetch(`${API_BASE}/api/media/generate-3d`, {
@@ -512,5 +514,89 @@ export const api = {
       key,
       src: `${mediaStreamUrl(key)}?t=${Date.now()}`,
     };
+  },
+
+  async uploadMediaFile(file: File): Promise<{ url: string; key: string }> {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${API_BASE}/api/media/upload`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+      },
+      body: form,
+    });
+    if (!res.ok) {
+      throw new Error(`Upload failed: ${res.status}`);
+    }
+    const data = (await res.json()) as { asset?: { key?: string }; key?: string };
+    const key = data.asset?.key || data.key || file.name;
+    return {
+      key,
+      url: mediaStreamUrl(key),
+    };
+  },
+
+  async createListingDraft(payload: {
+    name: string;
+    artisanSlug: string;
+    tradition: Tradition;
+    woodSpecies?: string;
+    priceLKR: number;
+    stock?: number;
+    maskSlug?: string;
+  }): Promise<{ id: string; maskSlug: string }> {
+    const data = await requestJson<{ listing?: { id: string; maskSlug: string }; id?: string; maskSlug?: string }>(
+      "/api/portal/listing",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }
+    );
+    const listing = data.listing || data;
+    return {
+      id: listing.id || "",
+      maskSlug: listing.maskSlug || "",
+    };
+  },
+
+  async getSettlementStats(): Promise<{
+    status: string;
+    fairTradeRates: {
+      primaryArtisanPercent: number;
+      reforestationPercent: number;
+      guildPercent: number;
+      platformPercent: number;
+      secondaryRoyaltyPercent: number;
+    };
+  }> {
+    return requestJson("/api/settlement/stats");
+  },
+
+  async updateOrderStatus(orderId: string, status: string): Promise<boolean> {
+    try {
+      await requestJson(`/api/portal/bench-orders/${encodeURIComponent(orderId)}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async updateMaskStock(slug: string, stock: number): Promise<boolean> {
+    try {
+      await requestJson(`/api/masks/${encodeURIComponent(slug)}/stock`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stock }),
+      });
+      return true;
+    } catch {
+      return false;
+    }
   },
 };

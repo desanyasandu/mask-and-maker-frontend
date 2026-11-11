@@ -11,6 +11,10 @@ import { NumberTicker } from "@/components/ui/motion";
 import { AnimatedTabs, BorderBeam, VerifiedSeal } from "@/components/ui/surfaces";
 import { ProvenanceTimeline } from "@/components/ui/ProvenanceTimeline";
 import { photos } from "@/lib/photos";
+import { AdminDashboard } from "@/components/portal/AdminDashboard";
+import { VerifierDesk } from "@/components/portal/VerifierDesk";
+import { ArtisanCollection } from "@/components/portal/ArtisanCollection";
+import { MaskCreateForm } from "@/components/portal/MaskCreateForm";
 
 type Role = "buyer" | "artisan" | "verifier" | "admin";
 const roles: { id: Role; label: string }[] = [
@@ -49,15 +53,18 @@ export default function Portal() {
         </div>
       </div>
 
-      {role !== "artisan" ? (
+      {role === "admin" && <AdminDashboard />}
+      {role === "verifier" && <VerifierDesk />}
+      {role === "buyer" && (
         <div className="mt-8">
           <EmptyState
             photo={photos.masksBanner}
-            title={`The ${roles.find((r) => r.id === role)?.label} desk opens with the pilot`}
-            body="This portal is designed with and for the carving workshops first — switch back to the artisan persona to walk the whole flow. Registry staff tooling ships after the second village cohort."
+            title="Collector &amp; Buyer Desk"
+            body="Inspect registered masks in the Marketplace, view 3D studies, or track your orders in your personal Account vault."
           />
         </div>
-      ) : (
+      )}
+      {role === "artisan" && (
         <>
           <div className="mt-8 flex flex-wrap items-end justify-between gap-4">
             <div>
@@ -72,15 +79,29 @@ export default function Portal() {
               onChange={setTab}
               tabs={[
                 { id: "dashboard", label: "Workshop desk" },
+                { id: "collection", label: "My collection" },
                 { id: "listing", label: "New listing" },
                 { id: "onboarding", label: "Onboarding" },
               ]}
             />
           </div>
 
-          {tab === "onboarding" && <Onboarding />}
           {tab === "dashboard" && <Dashboard goListing={() => setTab("listing")} />}
-          {tab === "listing" && <ListingFlow />}
+          {tab === "collection" && (
+            <ArtisanCollection
+              artisanSlug={artisan?.slug || "chandana-bandara"}
+              artisanName={artisan?.name || "Chandana Bandara"}
+              onAddNew={() => setTab("listing")}
+            />
+          )}
+          {tab === "listing" && (
+            <MaskCreateForm
+              artisanSlug={artisan?.slug || "chandana-bandara"}
+              artisanName={artisan?.name || "Chandana Bandara"}
+              onSuccess={() => setTab("collection")}
+            />
+          )}
+          {tab === "onboarding" && <Onboarding />}
         </>
       )}
     </div>
