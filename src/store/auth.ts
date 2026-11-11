@@ -6,6 +6,8 @@ export interface AuthUser {
   name: string;
   email: string;
   picture?: string;
+  role?: "buyer" | "artisan" | "verifier" | "admin";
+  artisanSlug?: string;
   /** "preview" is the sample account chooser used when no Google client id is configured */
   provider: "google" | "preview";
 }

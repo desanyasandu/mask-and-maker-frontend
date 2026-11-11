@@ -72,6 +72,13 @@ export default function Login() {
         if (data.token) {
           localStorage.setItem("mm_jwt_token", data.token);
         }
+        if (data.user) {
+          u = {
+            ...u,
+            role: data.user.role,
+            artisanSlug: data.user.artisanSlug,
+          };
+        }
       }
     } catch {
       // Graceful offline fallback
