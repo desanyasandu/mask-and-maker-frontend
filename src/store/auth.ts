@@ -23,11 +23,29 @@ const isUser = (v: unknown): v is AuthUser => {
   return !!u && typeof u.id === "string" && typeof u.name === "string" && typeof u.email === "string";
 };
 
+export const ADMIN_EMAILS = [
+  "kushanherath59@gmail.com",
+  "admin@maskandmaker.lk",
+];
+
+export const isPlatformAdmin = (user?: AuthUser | null): boolean => {
+  if (!user) return false;
+  if (user.role === "admin") return true;
+  if (user.email && ADMIN_EMAILS.includes(user.email.toLowerCase().trim())) return true;
+  return false;
+};
+
 export const useAuth = create<AuthState>()(
   persist(
     (set) => ({
       user: null,
-      signIn: (user) => set({ user }),
+      signIn: (user) => {
+        const enriched = {
+          ...user,
+          role: isPlatformAdmin(user) ? ("admin" as const) : (user.role || ("buyer" as const)),
+        };
+        set({ user: enriched });
+      },
       signOut: () => set({ user: null }),
     }),
     {
@@ -35,8 +53,13 @@ export const useAuth = create<AuthState>()(
       partialize: (s) => ({ user: s.user }),
       // a hand-edited or stale value must never count as a signed-in visitor
       merge: (persisted, current) => {
-        const user = (persisted as Partial<AuthState> | undefined)?.user;
-        return { ...current, user: isUser(user) ? user : null };
+        const rawUser = (persisted as Partial<AuthState> | undefined)?.user;
+        if (!isUser(rawUser)) return { ...current, user: null };
+        const user = {
+          ...rawUser,
+          role: isPlatformAdmin(rawUser) ? ("admin" as const) : (rawUser.role || ("buyer" as const)),
+        };
+        return { ...current, user };
       },
     }
   )

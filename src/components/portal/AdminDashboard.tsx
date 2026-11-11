@@ -13,6 +13,7 @@ import { api } from "@/lib/mock/api";
 import type { Artisan, Mask, Order } from "@/lib/types";
 import { formatMoney } from "@/lib/utils";
 import { useApp } from "@/store/app";
+import { useAuth } from "@/store/auth";
 import { cn } from "@/utils/cn";
 import { BorderBeam } from "@/components/ui/surfaces";
 
@@ -25,6 +26,7 @@ export function AdminDashboard() {
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
   const toast = useApp((s) => s.toast);
   const currency = useApp((s) => s.currency);
+  const user = useAuth((s) => s.user);
 
   const fetchData = async () => {
     try {
@@ -94,6 +96,12 @@ export function AdminDashboard() {
             <p className="mt-1 text-xs text-ink3">
               Direct oversight of orders, catalog submissions, artisan verification, and 4-way fair-trade settlement.
             </p>
+            <div className="mt-2.5 flex items-center gap-2">
+              <span className="font-mono text-[11px] text-ink3">Authenticated Administrator:</span>
+              <span className="rounded bg-gold/15 px-2 py-0.5 font-mono text-[11px] font-semibold text-gold">
+                {user?.email || "kushanherath59@gmail.com"}
+              </span>
+            </div>
           </div>
           <button
             onClick={fetchData}

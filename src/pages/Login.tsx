@@ -7,7 +7,7 @@ import { LampScene } from "@/components/ui/LampScene";
 import { CANCELLED, googleClientId, loadGoogle, signInWithGoogle } from "@/lib/google";
 import { usePageMeta } from "@/lib/meta";
 import { useApp } from "@/store/app";
-import { initialsOf, useAuth, type AuthUser } from "@/store/auth";
+import { initialsOf, isPlatformAdmin, useAuth, type AuthUser } from "@/store/auth";
 import { EXPO } from "@/lib/utils";
 
 /** Only same-site paths are honoured, so a crafted ?next= can't send someone elsewhere. */
@@ -17,8 +17,9 @@ export const safeNext = (next: string | null) => (next && /^\/(?!\/|login)/.test
 const reasonFor = (path: string) => (path.startsWith("/account") ? "Your account is private. Sign in to open it." : "");
 
 const sampleAccounts: AuthUser[] = [
-  { id: "preview-ruwin", name: "Ruwin Jayasuriya", email: "ruwin.jayasuriya@example.com", provider: "preview" },
-  { id: "preview-nimali", name: "Nimali Perera", email: "nimali.perera@example.com", provider: "preview" },
+  { id: "preview-kushan", name: "Kushan Herath", email: "kushanherath59@gmail.com", role: "admin", provider: "preview" },
+  { id: "preview-ruwin", name: "Ruwin Jayasuriya", email: "ruwin.jayasuriya@example.com", role: "buyer", provider: "preview" },
+  { id: "preview-chandana", name: "Chandana Bandara", email: "c.bandara@traditionalcarvers.lk", role: "artisan", artisanSlug: "chandana-bandara", provider: "preview" },
 ];
 
 function GoogleG({ className }: { className?: string }) {
@@ -83,6 +84,11 @@ export default function Login() {
     } catch {
       // Graceful offline fallback
     }
+
+    if (isPlatformAdmin(u)) {
+      u.role = "admin";
+    }
+
     signIn(u);
     toast(`Welcome, ${u.name.split(" ")[0]}`, { description: "You're signed in. Your crate and wishlist are kept.", kind: "success" });
   };

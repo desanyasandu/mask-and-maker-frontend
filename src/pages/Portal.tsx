@@ -6,8 +6,10 @@ import {
   Drama,
   HandCoins,
   Languages,
+  Lock,
   MapPin,
   ScanLine,
+  ShieldAlert,
   ShoppingBag,
   Sparkles,
   TrendingUp,
@@ -19,7 +21,7 @@ import { usePageMeta } from "@/lib/meta";
 import type { Artisan, Certificate, Mask, Order, PortalDashboardData } from "@/lib/types";
 import { formatMoney } from "@/lib/utils";
 import { useApp } from "@/store/app";
-import { useAuth, type AuthUser } from "@/store/auth";
+import { isPlatformAdmin, useAuth, type AuthUser } from "@/store/auth";
 import { cn } from "@/utils/cn";
 import { NumberTicker } from "@/components/ui/motion";
 import { AnimatedTabs, VerifiedSeal } from "@/components/ui/surfaces";
@@ -45,9 +47,14 @@ const SAMPLE_WORKSHOPS = [
 export default function Portal() {
   usePageMeta("Platform Portal");
   const user = useAuth((s) => s.user);
+  const toast = useApp((s) => s.toast);
+  const isAdmin = isPlatformAdmin(user);
 
-  // Initialize role to user's real role if logged in, default to buyer
-  const [role, setRole] = useState<Role>(() => user?.role || "buyer");
+  // Initialize role: admin users default to "admin", others default to "buyer" or their non-admin role
+  const [role, setRole] = useState<Role>(() => {
+    if (isAdmin) return "admin";
+    return user?.role && user.role !== "admin" ? user.role : "buyer";
+  });
   const [tab, setTab] = useState("dashboard");
 
   // Workshop selection
@@ -81,31 +88,67 @@ export default function Portal() {
             PLATFORM PORTAL · {user ? `Signed in as ${user.name}` : "Visitor mode"}
           </p>
           {user && (
-            <span className="rounded-full bg-gold/15 px-2 py-0.5 text-[10px] font-semibold uppercase text-gold">
-              {role}
+            <span
+              className={cn(
+                "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
+                isAdmin
+                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                  : "bg-gold/15 text-gold"
+              )}
+            >
+              {isAdmin ? "Platform Admin" : role}
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-1 rounded-lg border border-line bg-s1 p-0.5" role="group" aria-label="Preview as role">
-          {roles.map((r) => (
-            <button
-              key={r.id}
-              onClick={() => setRole(r.id)}
-              aria-pressed={role === r.id}
-              className={cn(
-                "h-7 rounded-md px-2.5 text-[12px] font-medium transition-colors duration-180",
-                role === r.id ? "bg-s3 text-gold" : "text-ink3 hover:text-ink2"
-              )}
-            >
-              {r.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-1 rounded-lg border border-line bg-s1 p-0.5" role="group" aria-label="Portal role mode">
+          {roles.map((r) => {
+            const isRestrictedAdmin = r.id === "admin" && !isAdmin;
+            return (
+              <button
+                key={r.id}
+                onClick={() => {
+                  if (isRestrictedAdmin) {
+                    toast("Admin privileges required", {
+                      description: "The Admin Control Tower is strictly restricted to platform administrators.",
+                      kind: "error",
+                    });
+                    setRole("admin");
+                    return;
+                  }
+                  setRole(r.id);
+                }}
+                aria-pressed={role === r.id}
+                className={cn(
+                  "relative flex items-center gap-1.5 h-7 rounded-md px-2.5 text-[12px] font-medium transition-colors duration-180",
+                  role === r.id
+                    ? "bg-s3 text-gold"
+                    : isRestrictedAdmin
+                    ? "text-ink4 opacity-60"
+                    : "text-ink3 hover:text-ink2"
+                )}
+              >
+                {isRestrictedAdmin && <Lock className="size-3 text-ink4" />}
+                {r.label}
+                {r.id === "admin" && isAdmin && (
+                  <span className="rounded bg-gold/20 px-1 py-0.2 text-[9px] font-bold text-gold">
+                    ADMIN
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {/* 1. Admin Control Tower */}
-      {role === "admin" && <AdminDashboard />}
+      {role === "admin" && (
+        isAdmin ? (
+          <AdminDashboard />
+        ) : (
+          <AdminAccessDenied onReturn={() => setRole("buyer")} />
+        )
+      )}
 
       {/* 2. Heritage Verifier Desk */}
       {role === "verifier" && <VerifierDesk />}
@@ -199,6 +242,40 @@ export default function Portal() {
           {tab === "onboarding" && <Onboarding />}
         </>
       )}
+    </div>
+  );
+}
+
+/* ---------------- Admin Access Denied Guard ---------------- */
+
+function AdminAccessDenied({ onReturn }: { onReturn: () => void }) {
+  return (
+    <div className="mx-auto mt-12 max-w-lg rounded-xl border border-red-500/30 bg-red-950/20 p-8 text-center backdrop-blur">
+      <div className="mx-auto flex size-14 items-center justify-center rounded-full border border-red-500/40 bg-red-500/10 text-red-400">
+        <ShieldAlert className="size-7" />
+      </div>
+      <h2 className="mt-4 font-display text-xl text-ink">Admin Control Tower Restricted</h2>
+      <p className="mt-2 text-xs leading-relaxed text-ink3">
+        Platform governance, GMV settlement telemetry, and order dispatching are strictly restricted to authorized platform administrators.
+      </p>
+      <div className="mt-4 rounded-md border border-line bg-s2/80 p-3 text-left">
+        <p className="text-[11px] font-medium text-ink2">Authorized Platform Administrator:</p>
+        <p className="font-mono text-xs text-gold">kushanherath59@gmail.com</p>
+      </div>
+      <div className="mt-6 flex justify-center gap-3">
+        <button
+          onClick={onReturn}
+          className="rounded-md bg-gold px-4 py-2 text-xs font-semibold text-black hover:bg-gold-strong transition-colors"
+        >
+          Return to Collector Desk
+        </button>
+        <Link
+          to="/login"
+          className="rounded-md border border-line bg-s2 px-4 py-2 text-xs text-ink hover:bg-s3 transition-colors"
+        >
+          Sign in with Admin Account
+        </Link>
+      </div>
     </div>
   );
 }
