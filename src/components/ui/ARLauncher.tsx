@@ -1,4 +1,5 @@
-import { Camera, CameraOff, Loader2, QrCode, RefreshCw, Ruler, ScanLine, Smartphone, Sparkles } from "lucide-react";
+import type { ModelViewerElement } from "@google/model-viewer";
+import { Camera, CameraOff, Loader2, Mouse, QrCode, RefreshCw, RotateCcw, Ruler, ScanLine, Smartphone, Sparkles } from "lucide-react";
 import QRCode from "qrcode";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/mock/api";
@@ -9,6 +10,15 @@ import { ArchivePlate, ImageFrame } from "./MaskImage";
 import { photos } from "@/lib/photos";
 
 type ViewerStatus = "idle" | "loading" | "error";
+const WALL_ORBIT = "0deg 90deg 102%";
+// Catalog scans are Z-up and face +X. The viewer expects Y-up and +Z.
+const CATALOG_ORIENTATION = "0deg -90deg -90deg";
+
+const previewModes = [
+  { id: "wall", label: "Wall preview", Icon: Ruler },
+  { id: "camera", label: "Live camera", Icon: Camera },
+  { id: "qr", label: "Phone QR", Icon: QrCode },
+] as const;
 
 function useModelViewerLib() {
   const [libReady, setLibReady] = useState(false);
@@ -30,19 +40,21 @@ function ViewerFallback({
   onGenerateAI,
   scanning,
   generating,
+  className,
 }: {
   mask: Mask;
   onRetry?: () => void;
   onGenerateAI?: () => void;
   scanning?: boolean;
   generating?: boolean;
+  className?: string;
 }) {
   return (
-    <div className="edge relative flex h-full w-full flex-col items-center justify-center gap-4 rounded-lg bg-s2 p-8 text-center">
+    <div className={cn("edge relative flex h-full w-full flex-col items-center justify-center gap-3 overflow-y-auto rounded-lg bg-s2 p-4 text-center", className)}>
       {scanning || generating ? (
         <Loader2 className="size-6 animate-spin text-gold" aria-hidden="true" />
       ) : (
-        <div className="w-full max-w-[240px]">
+        <div className="hidden w-full max-w-[150px] sm:block">
           <ImageFrame
             src={mask.image || photos.cobraMask.src}
             alt={mask.name}
@@ -93,13 +105,13 @@ export function ModelViewerPanel({
   mask,
   customSrc,
   enableAR = true,
-  transparentBg = false,
+  previewMode,
   className,
 }: {
   mask: Mask;
   customSrc?: string;
   enableAR?: boolean;
-  transparentBg?: boolean;
+  previewMode?: "wall" | "camera";
   className?: string;
 }) {
   const libReady = useModelViewerLib();
@@ -108,7 +120,7 @@ export function ModelViewerPanel({
   const [useStaticFallback, setUseStaticFallback] = useState(false);
   const [generatedSrc, setGeneratedSrc] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
-  const viewerRef = useRef<HTMLElement | null>(null);
+  const viewerRef = useRef<ModelViewerElement | null>(null);
 
   useEffect(() => {
     setUseStaticFallback(false);
@@ -159,11 +171,23 @@ export function ModelViewerPanel({
     }
   };
 
-  if (!libReady || generating) return <ViewerFallback mask={mask} scanning={!generating} generating={generating} />;
+  const resetView = () => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    viewer.cameraOrbit = WALL_ORBIT;
+    viewer.cameraTarget = "auto auto auto";
+    viewer.fieldOfView = "auto";
+    viewer.jumpCameraToGoal();
+  };
+
+  if (!libReady || generating) {
+    return <ViewerFallback mask={mask} scanning={!generating} generating={generating} className={className} />;
+  }
   if (status === "error")
     return (
       <ViewerFallback
         mask={mask}
+        className={className}
         onGenerateAI={handleGenerateAI}
         onRetry={() => {
           setUseStaticFallback(false);
@@ -174,24 +198,38 @@ export function ModelViewerPanel({
     );
 
   return (
-    <div className={cn(" relative overflow-hidden rounded-lg", !transparentBg && "edge bg-s2", className)}>
+    <div className={cn("relative overflow-hidden rounded-lg", !previewMode && "edge bg-s2", className)}>
       <model-viewer
         key={`${activeSrc}-${attempt}`}
-        ref={(el: HTMLElement | null) => {
+        ref={(el) => {
           viewerRef.current = el;
         }}
         src={activeSrc}
         poster={mask.image}
         alt={`Interactive 3D study of the ${mask.name}`}
         camera-controls
-        auto-rotate
+        auto-rotate={!previewMode}
+        orientation={!customSrc && !generatedSrc ? CATALOG_ORIENTATION : undefined}
+        camera-orbit={previewMode ? WALL_ORBIT : undefined}
+        interaction-prompt={previewMode ? "none" : undefined}
+        touch-action={previewMode ? "pan-y" : undefined}
         ar={enableAR}
         ar-modes="webxr scene-viewer quick-look"
-        shadow-intensity="0.85"
-        exposure="1.05"
+        shadow-intensity={previewMode ? 0 : 0.85}
+        exposure={previewMode ? 0.95 : 1.05}
         loading="eager"
-        style={{ width: "100%", height: "100%", minHeight: 340, background: "transparent" }}
+        className={cn("block size-full bg-transparent", !previewMode && "min-h-[340px]")}
       />
+      {previewMode && status === "idle" && (
+        <button
+          type="button"
+          onClick={resetView}
+          className="absolute top-3 right-3 inline-flex min-h-11 items-center gap-2 rounded-lg border border-line bg-s1 px-3 text-xs font-medium text-ink2 shadow-sm transition-colors hover:bg-s3 hover:text-ink"
+        >
+          <RotateCcw className="size-3.5" aria-hidden="true" />
+          Reset view
+        </button>
+      )}
       {status === "loading" && (
         <div className="pointer-events-none absolute inset-0 grid place-items-center bg-s1/60">
           <Loader2 className="size-6 animate-spin text-gold" aria-hidden="true" />
@@ -207,7 +245,7 @@ export function ModelViewerPanel({
  */
 export function ARLauncher({ mask }: { mask: Mask }) {
   const [viewerOpen, setViewerOpen] = useState(false);
-  const [mode, setMode] = useState<"wall" | "camera" | "qr">("wall");
+  const [mode, setMode] = useState<(typeof previewModes)[number]["id"]>("wall");
   const [qr, setQr] = useState<string | null>(null);
   const [camError, setCamError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -227,8 +265,12 @@ export function ARLauncher({ mask }: { mask: Mask }) {
     }
     let active = true;
     setCamError(null);
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCamError("Camera access is unavailable in this browser.");
+      return;
+    }
     navigator.mediaDevices
-      ?.getUserMedia({ video: { facingMode: "environment" }, audio: false })
+      .getUserMedia({ video: { facingMode: "environment" }, audio: false })
       .then((stream) => {
         if (!active) {
           stream.getTracks().forEach((t) => t.stop());
@@ -241,7 +283,7 @@ export function ARLauncher({ mask }: { mask: Mask }) {
       })
       .catch(() => {
         if (active) {
-          setCamError("Camera permission was denied or no camera was detected. Switched to studio wall preview.");
+          setCamError("Camera unavailable. Check your browser permissions and camera connection.");
         }
       });
     return () => {
@@ -276,51 +318,27 @@ export function ARLauncher({ mask }: { mask: Mask }) {
         View on your wall (3D &amp; AR)
       </Button>
 
-      <Modal open={viewerOpen} onClose={closeModal} title={`${mask.name} — Wall & AR Preview`} maxWidth="max-w-3xl">
-        {/* Mode switcher */}
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <div className="inline-flex rounded-lg border border-line bg-s1 p-0.5">
+      <Modal open={viewerOpen} onClose={closeModal} title={`${mask.name} · Wall & AR preview`} maxWidth="max-w-4xl">
+        <div role="group" aria-label="Preview mode" className="mb-4 grid grid-cols-3 gap-1 rounded-lg border border-line bg-canvas p-1 sm:inline-grid">
+          {previewModes.map(({ id, label, Icon }) => (
             <button
+              key={id}
               type="button"
-              onClick={() => setMode("wall")}
+              aria-pressed={mode === id}
+              onClick={() => setMode(id)}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                mode === "wall" ? "bg-s3 text-gold" : "text-ink3 hover:text-ink"
+                "flex min-h-11 flex-wrap items-center justify-center gap-x-2 gap-y-0 rounded-lg px-1 py-1 text-center text-xs font-medium leading-tight transition-colors sm:px-4",
+                mode === id ? "edge bg-s3 text-gold" : "text-ink2 hover:bg-s2 hover:text-ink"
               )}
             >
-              <Ruler className="size-3.5" />
-              Wall scale ({mask.heightCm} × {mask.widthCm} cm)
+              <Icon className="hidden size-4 shrink-0 min-[360px]:block" aria-hidden="true" />
+              {label}
             </button>
-            <button
-              type="button"
-              onClick={() => setMode("camera")}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                mode === "camera" ? "bg-s3 text-gold" : "text-ink3 hover:text-ink"
-              )}
-            >
-              <Camera className="size-3.5" />
-              Live Camera AR
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("qr")}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                mode === "qr" ? "bg-s3 text-gold" : "text-ink3 hover:text-ink"
-              )}
-            >
-              <QrCode className="size-3.5" />
-              Phone QR
-            </button>
-          </div>
-          <span className="font-mono text-xs text-ink3 tnum">
-            {mask.heightCm} cm H · {mask.widthCm} cm W · {mask.depthCm} cm D
-          </span>
+          ))}
         </div>
 
         {mode === "qr" ? (
-          <div className="flex flex-col items-center gap-5 rounded-lg border border-line bg-s2 p-6 sm:flex-row sm:items-start">
+          <div className="flex flex-col items-center justify-center gap-6 rounded-lg border border-line bg-s2 p-6 text-center sm:flex-row sm:p-8 sm:text-left">
             <div className="shrink-0 rounded-lg bg-[#F4EFE6] p-3">
               {qr ? (
                 <img src={qr} alt={`QR code to open the ${mask.name} AR preview`} className="size-44" />
@@ -328,60 +346,50 @@ export function ARLauncher({ mask }: { mask: Mask }) {
                 <div className="skel size-44 rounded-md" />
               )}
             </div>
-            <div className="text-sm leading-relaxed text-ink2">
-              <p className="flex items-center gap-2 font-medium text-ink">
-                <Smartphone className="size-4 text-gold" />
+            <div className="max-w-xs text-sm leading-relaxed text-ink2">
+              <p className="flex items-center justify-center gap-2 font-medium text-ink sm:justify-start">
+                <Smartphone className="size-4 text-gold" aria-hidden="true" />
                 Scan with your phone camera
               </p>
               <p className="mt-1.5">
-                Opens the 3D/AR study directly on your mobile device. On iPhone it launches Quick Look; on Android it launches Scene Viewer or WebXR.
-              </p>
-              <p className="mt-3 text-xs text-ink3">
-                Tip: Use the <strong>Wall scale</strong> or <strong>Live Camera AR</strong> tabs above to inspect and place the 3D mask right here in your browser.
+                Open the 3D study, then use the AR control on a supported phone to place the mask in your space.
               </p>
             </div>
           </div>
         ) : (
-          <div className="relative h-[440px] w-full overflow-hidden rounded-lg border border-line bg-[#1c1813]">
-            {/* Wall background grid or live camera video */}
-            {mode === "camera" && !camError ? (
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="absolute inset-0 h-full w-full object-cover"
+          <div className="overflow-hidden rounded-lg border border-line bg-s2">
+            <div className="relative h-[clamp(15rem,54dvh,29rem)] bg-[radial-gradient(ellipse_at_50%_40%,var(--s3)_0%,var(--s2)_52%,var(--canvas)_100%)]">
+              {mode === "camera" && !camError && (
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="absolute inset-0 size-full object-cover"
+                />
+              )}
+              <ModelViewerPanel
+                mask={mask}
+                previewMode={mode}
+                className="size-full"
               />
-            ) : (
-              <div
-                className="absolute inset-0"
-                style={{
-                  backgroundImage:
-                    "radial-gradient(circle at 50% 35%, rgba(201,164,92,0.14), transparent 70%), linear-gradient(to right, rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.04) 1px, transparent 1px)",
-                  backgroundSize: "100% 100%, 40px 40px, 40px 40px",
-                }}
-              />
-            )}
-
-            {/* Dimension ruler overlay */}
-            <div className="pointer-events-none absolute top-4 left-4 z-10 rounded-md bg-black/65 px-3 py-1.5 font-mono text-[11px] text-gold backdrop-blur-sm tnum">
-              Scale: {mask.heightCm} cm tall × {mask.widthCm} cm wide ({mask.weightKg} kg)
             </div>
-
-            {camError && (
-              <div className="absolute top-4 right-4 z-10 flex items-center gap-1.5 rounded-md bg-black/75 px-3 py-1.5 text-xs text-ink2">
-                <CameraOff className="size-3.5 text-gold" />
+            {mode === "camera" && camError && (
+              <div role="status" className="flex items-center gap-2 border-t border-line px-4 py-2 text-xs text-ink2">
+                <CameraOff className="size-4 shrink-0 text-gold" aria-hidden="true" />
                 <span>{camError}</span>
               </div>
             )}
-
-            {/* Interactive 3D model-viewer layered over wall/camera */}
-            <ModelViewerPanel
-              mask={mask}
-              enableAR={true}
-              transparentBg={true}
-              className="relative z-0 h-full w-full"
-            />
+            <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t border-line px-4 py-3 text-xs">
+              <div className="inline-flex items-center gap-2 text-ink2">
+                <Ruler className="size-4 shrink-0 text-gold" aria-hidden="true" />
+                <span className="tnum">{mask.heightCm} H × {mask.widthCm} W × {mask.depthCm} D cm · {mask.weightKg} kg</span>
+              </div>
+              <div className="inline-flex items-center gap-2 text-ink3">
+                <Mouse className="size-4 shrink-0" aria-hidden="true" />
+                <span>Drag to rotate · Pinch or scroll to zoom</span>
+              </div>
+            </div>
           </div>
         )}
       </Modal>

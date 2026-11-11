@@ -1,4 +1,5 @@
 import type * as React from "react";
+import type { ModelViewerElement } from "@google/model-viewer";
 
 declare module "react" {
   namespace JSX {
@@ -10,7 +11,7 @@ declare module "react" {
 
 interface ModelViewerJSXProps extends React.HTMLAttributes<HTMLElement> {
   key?: React.Key;
-  ref?: React.Ref<HTMLElement>;
+  ref?: React.Ref<ModelViewerElement>;
   src?: string;
   poster?: string;
   alt?: string;
@@ -19,6 +20,10 @@ interface ModelViewerJSXProps extends React.HTMLAttributes<HTMLElement> {
   "ar-modes"?: string;
   "camera-controls"?: boolean;
   cameraControls?: boolean;
+  orientation?: string;
+  "camera-orbit"?: string;
+  "interaction-prompt"?: "auto" | "none";
+  "touch-action"?: "pan-y";
   "auto-rotate"?: boolean;
   autoRotate?: boolean;
   exposure?: string | number;

@@ -290,7 +290,7 @@ export function Modal({
             onClick={onClose}
           />
           <motion.div
-            className={cn("edge relative w-full rounded-lg bg-s1 shadow-2xl", maxWidth)}
+            className={cn("edge relative max-h-full w-full overflow-y-auto rounded-lg bg-s1 shadow-2xl", maxWidth)}
             initial={{ opacity: 0, y: 12, scale: 0.985 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.99 }}
