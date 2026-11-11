@@ -210,12 +210,14 @@ export function ModelViewerPanel({
         camera-controls
         auto-rotate={!previewMode}
         orientation={!customSrc && !generatedSrc ? CATALOG_ORIENTATION : undefined}
-        camera-orbit={previewMode ? WALL_ORBIT : undefined}
+        camera-orbit={previewMode ? WALL_ORBIT : "0deg 75deg 105%"}
         interaction-prompt={previewMode ? "none" : undefined}
         touch-action={previewMode ? "pan-y" : undefined}
         ar={enableAR}
         ar-modes="webxr scene-viewer quick-look"
         shadow-intensity={previewMode ? 0 : 0.85}
+        shadow-softness="0.75"
+        environment-image="neutral"
         exposure={previewMode ? 0.95 : 1.05}
         loading="eager"
         className={cn("block size-full bg-transparent", !previewMode && "min-h-[340px]")}
