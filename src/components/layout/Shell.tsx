@@ -7,6 +7,7 @@ import { initialsOf, useAuth, type AuthUser } from "@/store/auth";
 import { cn } from "@/utils/cn";
 import { Button } from "../ui/kit";
 import { FlameBand } from "../art";
+import { NotificationBell } from "./NotificationBell";
 
 const navLinks = [
   { to: "/masks", label: "Collection" },
@@ -360,6 +361,8 @@ export function Header() {
           </div>
 
           <ThemeToggle />
+
+          <NotificationBell />
 
           <AccountMenu />
 

@@ -1,4 +1,5 @@
 import {
+  Bell,
   Boxes,
   Check,
   DollarSign,
@@ -11,7 +12,7 @@ import {
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/mock/api";
-import type { Artisan, Mask, Order } from "@/lib/types";
+import type { Artisan, Mask, NotificationItem, Order } from "@/lib/types";
 import { formatMoney } from "@/lib/utils";
 import { useApp } from "@/store/app";
 import { isPlatformAdmin, useAuth } from "@/store/auth";
@@ -21,11 +22,12 @@ import { BorderBeam } from "@/components/ui/surfaces";
 export function AdminDashboard() {
   const user = useAuth((s) => s.user);
   const isAdmin = isPlatformAdmin(user);
-  const [tab, setTab] = useState<"orders" | "catalog" | "artisans" | "settlement">("orders");
+  const [tab, setTab] = useState<"orders" | "catalog" | "artisans" | "settlement" | "notifications">("orders");
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
   const [masks, setMasks] = useState<Mask[]>([]);
   const [artisans, setArtisans] = useState<Artisan[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
   const toast = useApp((s) => s.toast);
   const currency = useApp((s) => s.currency);
@@ -34,14 +36,16 @@ export function AdminDashboard() {
     if (!isAdmin) return;
     try {
       setLoading(true);
-      const [orderList, maskList, artisanList] = await Promise.all([
+      const [orderList, maskList, artisanList, notifRes] = await Promise.all([
         api.listOrders().catch(() => []),
         api.listMasks().catch(() => []),
         api.listArtisans().catch(() => []),
+        api.listNotifications("all", 50).catch(() => ({ items: [], total: 0, unreadCount: 0 })),
       ]);
       setOrders(orderList);
       setMasks(maskList);
       setArtisans(artisanList);
+      setNotifications(notifRes.items);
     } catch {
       toast("Error loading platform data", { kind: "error" });
     } finally {
@@ -208,6 +212,16 @@ export function AdminDashboard() {
         >
           <DollarSign className="size-4" />
           Settlement Ledger
+        </button>
+        <button
+          onClick={() => setTab("notifications")}
+          className={cn(
+            "flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-medium transition-colors",
+            tab === "notifications" ? "border-gold text-gold" : "border-transparent text-ink3 hover:text-ink"
+          )}
+        >
+          <Bell className="size-4" />
+          Notification Mesh ({notifications.length})
         </button>
       </div>
 
@@ -433,6 +447,92 @@ export function AdminDashboard() {
                 <li>• Polygon smart contract triggers instantaneous wallet payout</li>
               </ul>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab 5: Notification Service Mesh */}
+      {tab === "notifications" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-display text-base text-ink">RabbitMQ Event &amp; Notification Stream</h3>
+              <p className="text-xs text-ink3">Dispatched notices across orders, 3D AI generation, minting, and provenance events.</p>
+            </div>
+            <span className="font-mono text-xs text-gold">{notifications.length} Total Records</span>
+          </div>
+
+          <div className="overflow-x-auto rounded-lg border border-line bg-s1">
+            <table className="w-full text-left text-xs">
+              <thead className="border-b border-line bg-s2/80 text-[11px] font-medium text-ink3">
+                <tr>
+                  <th className="px-4 py-3">Event ID</th>
+                  <th className="px-4 py-3">Recipient</th>
+                  <th className="px-4 py-3">Category</th>
+                  <th className="px-4 py-3">Title &amp; Notice</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Timestamp</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line/60">
+                {notifications.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-ink3">
+                      No events dispatched in the notification service yet.
+                    </td>
+                  </tr>
+                ) : (
+                  notifications.map((n) => (
+                    <tr key={n.id} className="hover:bg-s2/50 transition-colors">
+                      <td className="px-4 py-3 font-mono font-medium text-gold">{n.id}</td>
+                      <td className="px-4 py-3">
+                        <span className="font-mono text-ink">{n.recipientId}</span>
+                        <span className="ml-1.5 rounded bg-s2 px-1.5 py-0.5 text-[10px] text-ink3 uppercase">
+                          {n.recipientRole || "all"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={cn(
+                            "rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                            n.category === "order" && "bg-sky-500/15 text-sky-400",
+                            n.category === "minting" && "bg-amber-500/15 text-amber-400",
+                            n.category === "verification" && "bg-emerald-500/15 text-emerald-400",
+                            n.category === "security" && "bg-rose-500/15 text-rose-400",
+                            n.category === "payout" && "bg-yellow-500/15 text-yellow-400"
+                          )}
+                        >
+                          {n.category}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 max-w-xs">
+                        <p className="font-medium text-ink truncate">{n.title}</p>
+                        <p className="text-[11px] text-ink3 line-clamp-1">{n.message}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1 text-[11px] font-medium",
+                            n.isRead ? "text-ink3" : "text-gold"
+                          )}
+                        >
+                          <span className={cn("size-1.5 rounded-full", n.isRead ? "bg-ink3" : "bg-gold animate-ping")} />
+                          {n.isRead ? "Read" : "Unread"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-ink3 whitespace-nowrap">
+                        {new Date(n.createdAt).toLocaleString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

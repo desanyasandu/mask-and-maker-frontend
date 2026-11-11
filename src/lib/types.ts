@@ -214,3 +214,19 @@ export interface SearchHit {
   href: string;
   tradition?: Tradition;
 }
+
+export interface NotificationItem {
+  id: string;
+  recipientId: string;
+  recipientRole?: "artisan" | "buyer" | "guild_curator" | "system";
+  channel?: "in_app" | "email" | "sms" | "webhook";
+  category?: "order" | "minting" | "verification" | "payout" | "security" | "system";
+  priority?: "low" | "medium" | "high" | "urgent";
+  title: string;
+  message: string;
+  data?: Record<string, any>;
+  link?: string;
+  isRead: boolean;
+  readAt?: string;
+  createdAt: string;
+}

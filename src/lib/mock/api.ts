@@ -35,6 +35,7 @@ import type {
   Certificate,
   CraftStage,
   Mask,
+  NotificationItem,
   Order,
   PortalDashboardData,
   SearchHit,
@@ -635,6 +636,75 @@ export const api = {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ stock }),
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async listNotifications(
+    recipientId?: string,
+    limit = 30
+  ): Promise<{ items: NotificationItem[]; total: number; unreadCount: number }> {
+    try {
+      const params = new URLSearchParams();
+      if (recipientId) params.append("recipientId", recipientId);
+      params.append("limit", String(limit));
+      const res = await requestJson<{
+        items?: NotificationItem[];
+        total?: number;
+        unreadCount?: number;
+      }>(`/api/notifications?${params.toString()}`);
+      return {
+        items: Array.isArray(res?.items) ? res.items : [],
+        total: res?.total || 0,
+        unreadCount: res?.unreadCount || 0,
+      };
+    } catch {
+      return { items: [], total: 0, unreadCount: 0 };
+    }
+  },
+
+  async getUnreadNotificationCount(recipientId: string): Promise<number> {
+    try {
+      const res = await requestJson<{ unreadCount?: number }>(
+        `/api/notifications/unread-count?recipientId=${encodeURIComponent(recipientId)}`
+      );
+      return typeof res?.unreadCount === "number" ? res.unreadCount : 0;
+    } catch {
+      return 0;
+    }
+  },
+
+  async markNotificationAsRead(id: string): Promise<boolean> {
+    try {
+      await requestJson(`/api/notifications/${encodeURIComponent(id)}/read`, {
+        method: "PATCH",
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async markAllNotificationsAsRead(recipientId: string): Promise<boolean> {
+    try {
+      await requestJson("/api/notifications/mark-all-read", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipientId }),
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async deleteNotification(id: string): Promise<boolean> {
+    try {
+      await requestJson(`/api/notifications/${encodeURIComponent(id)}`, {
+        method: "DELETE",
       });
       return true;
     } catch {
