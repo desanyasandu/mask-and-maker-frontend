@@ -4,6 +4,8 @@ import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { CookieNotice, Footer, Header } from "@/components/layout/Shell";
 import { RequireAuth } from "@/components/layout/RequireAuth";
+import { SmoothScroll } from "@/components/layout/SmoothScroll";
+import { scrollToInstant } from "@/lib/smoothScroll";
 import { CommandPalette } from "@/components/ui/CommandPalette";
 import { ToastHost } from "@/components/ui/kit";
 import { CreditsPage, ErrorBoundary, LegalPage, NotFound, RouteLoading } from "@/pages/System";
@@ -31,7 +33,7 @@ function ScrollToTop() {
     return () => { window.history.scrollRestoration = previous; };
   }, []);
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+    scrollToInstant(0);
   }, [pathname]);
   return null;
 }
@@ -83,6 +85,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <BrowserRouter>
+        <SmoothScroll />
         <ScrollToTop />
         <div className="flex min-h-svh flex-col bg-canvas text-ink">
           <Header />

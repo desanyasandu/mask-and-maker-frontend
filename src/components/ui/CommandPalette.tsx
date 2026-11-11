@@ -158,7 +158,7 @@ export function CommandPalette() {
               <kbd className="kbd shrink-0">esc</kbd>
             </div>
 
-            <div className="max-h-[46vh] overflow-y-auto p-1.5" id="mm-palette-list" role="listbox">
+            <div data-lenis-prevent className="max-h-[46vh] overflow-y-auto p-1.5" id="mm-palette-list" role="listbox">
               {grouped.length === 0 && (
                 <div className="px-3 py-5 text-center">
                   <p className="text-sm text-ink3">

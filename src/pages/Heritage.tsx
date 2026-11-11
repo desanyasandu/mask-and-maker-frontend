@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "@/lib/mock/api";
 import { usePageMeta } from "@/lib/meta";
+import { scrollToInstant } from "@/lib/smoothScroll";
 import { formatDate, formatMoney } from "@/lib/utils";
 import { useApp } from "@/store/app";
 import { cn } from "@/utils/cn";
@@ -331,7 +332,7 @@ function ArticleIndex({ articlesList }: { articlesList: Article[] }) {
 
 function ArticleReader({ article, onBack }: { article: Article; onBack: () => void }) {
   useEffect(() => {
-    window.scrollTo({ top: 0 });
+    scrollToInstant(0);
   }, [article.slug]);
 
   return (

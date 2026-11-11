@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigationType, useSearchParams } from "react-router-dom";
 import { api, sizeOf, type MaskQuery } from "@/lib/mock/api";
 import { usePageMeta } from "@/lib/meta";
+import { scrollToInstant } from "@/lib/smoothScroll";
 import type { Artisan, Mask, Tradition } from "@/lib/types";
 import { formatMoney } from "@/lib/utils";
 import { useApp } from "@/store/app";
@@ -76,7 +77,7 @@ export default function Marketplace() {
   useLayoutEffect(() => {
     if (loading) return;
     if (pendingScroll.current !== undefined) {
-      window.scrollTo({ top: pendingScroll.current, behavior: "instant" });
+      scrollToInstant(pendingScroll.current);
       pendingScroll.current = undefined;
     }
     const saveScroll = () => {

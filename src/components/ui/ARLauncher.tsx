@@ -273,6 +273,7 @@ export function ModelViewerPanel({
         poster={mask.image}
         alt={`Interactive 3D study of the ${mask.name}`}
         camera-controls
+        data-lenis-prevent-wheel
         auto-rotate={!wallPreview && !platform}
         orientation={!customSrc && !generatedSrc && !useRefinedScan ? CATALOG_ORIENTATION : undefined}
         camera-orbit={wallPreview ? WALL_ORBIT : "0deg 75deg 105%"}

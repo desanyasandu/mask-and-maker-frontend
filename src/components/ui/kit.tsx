@@ -15,6 +15,7 @@ import {
 import { useApp } from "@/store/app";
 import { cn } from "@/utils/cn";
 import { EXPO } from "@/lib/utils";
+import { freezeSmoothScroll, thawSmoothScroll } from "@/lib/smoothScroll";
 import type { Photo } from "@/lib/photos";
 import { ImageFrame, Pic } from "./MaskImage";
 
@@ -214,6 +215,7 @@ function useOverlay(open: boolean, onClose: () => void) {
     document.addEventListener("keydown", onKey);
     scrollLocks += 1;
     document.body.style.overflow = "hidden";
+    freezeSmoothScroll();
     const raf = window.requestAnimationFrame(() => {
       const panel = panelRef.current;
       if (panel && !panel.contains(document.activeElement)) panel.focus({ preventScroll: true });
@@ -223,6 +225,7 @@ function useOverlay(open: boolean, onClose: () => void) {
       document.removeEventListener("keydown", onKey);
       scrollLocks = Math.max(0, scrollLocks - 1);
       if (scrollLocks === 0) document.body.style.overflow = "";
+      thawSmoothScroll();
       if (trigger && document.contains(trigger)) trigger.focus({ preventScroll: true });
     };
   }, [open]);
