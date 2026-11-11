@@ -18,6 +18,7 @@ interface ModelViewerJSXProps extends React.HTMLAttributes<HTMLElement> {
   ar?: boolean;
   arModes?: string;
   "ar-modes"?: string;
+  "ar-placement"?: "floor" | "wall";
   "camera-controls"?: boolean;
   cameraControls?: boolean;
   orientation?: string;

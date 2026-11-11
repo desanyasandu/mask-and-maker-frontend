@@ -1,8 +1,8 @@
 import type { ModelViewerElement } from "@google/model-viewer";
-import { Camera, CameraOff, Loader2, Mouse, QrCode, RefreshCw, RotateCcw, Ruler, ScanLine, Smartphone, Sparkles } from "lucide-react";
+import { Loader2, Mouse, QrCode, RefreshCw, RotateCcw, Ruler, ScanLine, Smartphone, Sparkles } from "lucide-react";
 import QRCode from "qrcode";
 import { useEffect, useRef, useState } from "react";
-import { api } from "@/lib/mock/api";
+import { api, mediaStreamUrl } from "@/lib/mock/api";
 import type { Mask } from "@/lib/types";
 import { cn } from "@/utils/cn";
 import { Button, Modal } from "./kit";
@@ -11,14 +11,22 @@ import { photos } from "@/lib/photos";
 
 type ViewerStatus = "idle" | "loading" | "error";
 const WALL_ORBIT = "0deg 90deg 102%";
-// Catalog scans are Z-up and face +X. The viewer expects Y-up and +Z.
+// Legacy streamed catalog scans are Z-up and face +X.
 const CATALOG_ORIENTATION = "0deg -90deg -90deg";
 
 const previewModes = [
   { id: "wall", label: "Wall preview", Icon: Ruler },
-  { id: "camera", label: "Live camera", Icon: Camera },
   { id: "qr", label: "Phone QR", Icon: QrCode },
 ] as const;
+
+function mobileARPlatform() {
+  if (/Android/i.test(navigator.userAgent)) return "android";
+  if (/iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) {
+    return "ios";
+  }
+  return null;
+}
 
 function useModelViewerLib() {
   const [libReady, setLibReady] = useState(false);
@@ -104,14 +112,12 @@ function ViewerFallback({
 export function ModelViewerPanel({
   mask,
   customSrc,
-  enableAR = true,
-  previewMode,
+  wallPreview = false,
   className,
 }: {
   mask: Mask;
   customSrc?: string;
-  enableAR?: boolean;
-  previewMode?: "wall" | "camera";
+  wallPreview?: boolean;
   className?: string;
 }) {
   const libReady = useModelViewerLib();
@@ -120,7 +126,11 @@ export function ModelViewerPanel({
   const [useStaticFallback, setUseStaticFallback] = useState(false);
   const [generatedSrc, setGeneratedSrc] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [launchingAR, setLaunchingAR] = useState(false);
+  const [arError, setARError] = useState<string | null>(null);
   const viewerRef = useRef<ModelViewerElement | null>(null);
+  const platform = mobileARPlatform();
+  const secureAR = window.location.protocol === "https:";
 
   useEffect(() => {
     setUseStaticFallback(false);
@@ -131,11 +141,14 @@ export function ModelViewerPanel({
   const activeSrc =
     customSrc ||
     generatedSrc ||
-    (useStaticFallback ? `/models/${mask.slug}.glb` : `/api/media/stream/models/${mask.slug}.glb`);
+    (useStaticFallback
+      ? `/models/${encodeURIComponent(mask.slug)}.glb?v=2`
+      : mediaStreamUrl(`models/${mask.slug}.glb`));
 
   useEffect(() => {
     if (!libReady || !viewerRef.current) return;
     setStatus("loading");
+    setARError(null);
     const el = viewerRef.current;
     const onLoad = () => setStatus("idle");
     const onError = () => {
@@ -145,11 +158,19 @@ export function ModelViewerPanel({
         setStatus("error");
       }
     };
+    const onARStatus = (event: Event) => {
+      if ((event as CustomEvent<{ status: string }>).detail.status === "failed") {
+        setARError("AR could not open. Try Safari on iPhone or Chrome on an Android phone with Google Play Services for AR.");
+      }
+    };
     el.addEventListener("load", onLoad);
     el.addEventListener("error", onError);
+    el.addEventListener("ar-status", onARStatus);
+    if (el.loaded) onLoad();
     return () => {
       el.removeEventListener("load", onLoad);
       el.removeEventListener("error", onError);
+      el.removeEventListener("ar-status", onARStatus);
     };
   }, [libReady, attempt, activeSrc, customSrc, generatedSrc, useStaticFallback]);
 
@@ -180,6 +201,27 @@ export function ModelViewerPanel({
     viewer.jumpCameraToGoal();
   };
 
+  const openAR = async () => {
+    const viewer = viewerRef.current;
+    if (!viewer?.loaded || launchingAR) return;
+    if (!viewer.canActivateAR) {
+      setARError(platform === "ios"
+        ? "AR is unavailable here. Open this page in Safari on a compatible iPhone or iPad."
+        : "AR is unavailable here. Open this page in Chrome on a compatible Android device with Google Play Services for AR.");
+      return;
+    }
+    setARError(null);
+    setLaunchingAR(true);
+    try {
+      // Keep the native launch on the tap that granted browser user activation.
+      await viewer.activateAR();
+    } catch {
+      setARError("AR could not open. Try again from your phone’s browser.");
+    } finally {
+      setLaunchingAR(false);
+    }
+  };
+
   if (!libReady || generating) {
     return <ViewerFallback mask={mask} scanning={!generating} generating={generating} className={className} />;
   }
@@ -198,7 +240,7 @@ export function ModelViewerPanel({
     );
 
   return (
-    <div className={cn("relative overflow-hidden rounded-lg", !previewMode && "edge bg-s2", className)}>
+    <div className={cn("relative overflow-hidden rounded-lg", !wallPreview && "edge bg-s2", className)}>
       <model-viewer
         key={`${activeSrc}-${attempt}`}
         ref={(el) => {
@@ -208,19 +250,21 @@ export function ModelViewerPanel({
         poster={mask.image}
         alt={`Interactive 3D study of the ${mask.name}`}
         camera-controls
-        auto-rotate={!previewMode}
-        orientation={!customSrc && !generatedSrc ? CATALOG_ORIENTATION : undefined}
-        camera-orbit={previewMode ? WALL_ORBIT : undefined}
-        interaction-prompt={previewMode ? "none" : undefined}
-        touch-action={previewMode ? "pan-y" : undefined}
-        ar={enableAR}
-        ar-modes="webxr scene-viewer quick-look"
-        shadow-intensity={previewMode ? 0 : 0.85}
-        exposure={previewMode ? 0.95 : 1.05}
+        auto-rotate={!wallPreview && !platform}
+        orientation={!customSrc && !generatedSrc && !useStaticFallback ? CATALOG_ORIENTATION : undefined}
+        camera-orbit={wallPreview ? WALL_ORBIT : undefined}
+        interaction-prompt={wallPreview ? "none" : undefined}
+        touch-action="pan-y"
+        ar={Boolean(platform && secureAR)}
+        ar-modes={platform === "ios" ? "quick-look" : "webxr scene-viewer"}
+        ar-placement="wall"
+        shadow-intensity={wallPreview ? 0 : 0.85}
+        exposure={wallPreview ? 0.95 : 1.05}
         loading="eager"
-        className={cn("block size-full bg-transparent", !previewMode && "min-h-[340px]")}
+        style={{ "--ar-button-display": "none" } as React.CSSProperties}
+        className={cn("block size-full bg-transparent", !wallPreview && "min-h-[340px]")}
       />
-      {previewMode && status === "idle" && (
+      {wallPreview && status === "idle" && (
         <button
           type="button"
           onClick={resetView}
@@ -235,151 +279,109 @@ export function ModelViewerPanel({
           <Loader2 className="size-6 animate-spin text-gold" aria-hidden="true" />
         </div>
       )}
+      {platform && status === "idle" && (
+        <div className="absolute inset-x-3 bottom-3 flex flex-col items-center gap-2">
+          {secureAR && (
+            <Button type="button" onClick={openAR} disabled={launchingAR} className="min-h-11 shadow-md">
+              {launchingAR
+                ? <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                : <ScanLine className="size-4" aria-hidden="true" />}
+              {launchingAR ? "Opening AR…" : "View on your wall in AR"}
+            </Button>
+          )}
+          {(arError || !secureAR) && (
+            <p role="status" className="max-w-sm rounded-lg bg-s1 px-3 py-2 text-center text-xs text-ink">
+              {arError || "Open this page over HTTPS to use AR."}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-/**
- * "View on your wall" — Interactive AR & Wall Scale Launcher.
- * Works on both desktop (Wall Scale + Live Webcam AR overlay + Mobile QR hand-off) and mobile (Camera AR + WebXR/QuickLook).
- */
+/** Desktop 3D preview and QR hand-off, or a phone preview with native AR. */
 export function ARLauncher({ mask }: { mask: Mask }) {
   const [viewerOpen, setViewerOpen] = useState(false);
   const [mode, setMode] = useState<(typeof previewModes)[number]["id"]>("wall");
   const [qr, setQr] = useState<string | null>(null);
-  const [camError, setCamError] = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-  };
+  const [qrFailed, setQrFailed] = useState(false);
+  const platform = mobileARPlatform();
+  const phoneUrl = new URL(`/masks/${encodeURIComponent(mask.slug)}?ar=1`, window.location.origin).href;
 
   useEffect(() => {
-    if (!viewerOpen || mode !== "camera") {
-      stopCamera();
-      return;
-    }
-    let active = true;
-    setCamError(null);
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setCamError("Camera access is unavailable in this browser.");
-      return;
-    }
-    navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: "environment" }, audio: false })
-      .then((stream) => {
-        if (!active) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setCamError("Camera unavailable. Check your browser permissions and camera connection.");
-        }
-      });
-    return () => {
-      active = false;
-      stopCamera();
-    };
-  }, [viewerOpen, mode]);
-
-  const openModal = async () => {
-    setViewerOpen(true);
-    setMode("wall");
-    try {
-      const url = `${window.location.origin}/masks/${mask.slug}?ar=1`;
-      const dataUrl = await QRCode.toDataURL(url, {
-        width: 240,
-        margin: 1,
-        color: { dark: "#16120A", light: "#F4EFE6" },
-      });
-      setQr(dataUrl);
-    } catch {}
-  };
-
-  const closeModal = () => {
-    stopCamera();
-    setViewerOpen(false);
-  };
+    if (!viewerOpen || mode !== "qr") return;
+    let current = true;
+    setQr(null);
+    setQrFailed(false);
+    QRCode.toDataURL(phoneUrl, {
+      width: 240,
+      margin: 4,
+      color: { dark: "#16120A", light: "#F4EFE6" },
+    })
+      .then((dataUrl) => { if (current) setQr(dataUrl); })
+      .catch(() => { if (current) setQrFailed(true); });
+    return () => { current = false; };
+  }, [viewerOpen, mode, phoneUrl]);
 
   return (
     <>
-      <Button variant="outline" size="lg" className="w-full justify-center" onClick={openModal}>
-        <ScanLine className="size-4 text-gold" />
-        View on your wall (3D &amp; AR)
+      <Button variant="outline" size="lg" className="w-full justify-center" onClick={() => {
+        setMode("wall");
+        setViewerOpen(true);
+      }}>
+        <ScanLine className="size-4 text-gold" aria-hidden="true" />
+        {platform ? "Preview on your wall in AR" : "View on your wall in 3D"}
       </Button>
 
-      <Modal open={viewerOpen} onClose={closeModal} title={`${mask.name} · Wall & AR preview`} maxWidth="max-w-4xl">
-        <div role="group" aria-label="Preview mode" className="mb-4 grid grid-cols-3 gap-1 rounded-lg border border-line bg-canvas p-1 sm:inline-grid">
-          {previewModes.map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              type="button"
-              aria-pressed={mode === id}
-              onClick={() => setMode(id)}
-              className={cn(
-                "flex min-h-11 flex-wrap items-center justify-center gap-x-2 gap-y-0 rounded-lg px-1 py-1 text-center text-xs font-medium leading-tight transition-colors sm:px-4",
-                mode === id ? "edge bg-s3 text-gold" : "text-ink2 hover:bg-s2 hover:text-ink"
-              )}
-            >
-              <Icon className="hidden size-4 shrink-0 min-[360px]:block" aria-hidden="true" />
-              {label}
-            </button>
-          ))}
-        </div>
+      <Modal open={viewerOpen} onClose={() => setViewerOpen(false)} title={`${mask.name} · Wall preview`} maxWidth="max-w-4xl">
+        {!platform && (
+          <div role="group" aria-label="Preview mode" className="mb-4 inline-grid grid-cols-2 gap-1 rounded-lg border border-line bg-canvas p-1">
+            {previewModes.map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={mode === id}
+                onClick={() => setMode(id)}
+                className={cn(
+                  "flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-1 text-xs font-medium transition-colors",
+                  mode === id ? "edge bg-s3 text-gold" : "text-ink2 hover:bg-s2 hover:text-ink"
+                )}
+              >
+                <Icon className="size-4 shrink-0" aria-hidden="true" />
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {mode === "qr" ? (
           <div className="flex flex-col items-center justify-center gap-6 rounded-lg border border-line bg-s2 p-6 text-center sm:flex-row sm:p-8 sm:text-left">
-            <div className="shrink-0 rounded-lg bg-[#F4EFE6] p-3">
-              {qr ? (
-                <img src={qr} alt={`QR code to open the ${mask.name} AR preview`} className="size-44" />
-              ) : (
-                <div className="skel size-44 rounded-md" />
-              )}
-            </div>
+            {!qrFailed && (
+              <div className="shrink-0 rounded-lg bg-[#F4EFE6] p-3">
+                {qr ? (
+                  <img src={qr} alt={`QR code to open the ${mask.name} AR preview`} className="size-44" />
+                ) : (
+                  <div className="skel size-44 rounded-md" />
+                )}
+              </div>
+            )}
             <div className="max-w-xs text-sm leading-relaxed text-ink2">
               <p className="flex items-center justify-center gap-2 font-medium text-ink sm:justify-start">
                 <Smartphone className="size-4 text-gold" aria-hidden="true" />
-                Scan with your phone camera
+                {qrFailed ? "Open on your phone" : "Scan with your phone camera"}
               </p>
               <p className="mt-1.5">
-                Open the 3D study, then use the AR control on a supported phone to place the mask in your space.
+                Tap “View on your wall in AR” on your phone to place the mask.
               </p>
+              {qrFailed && <a href={phoneUrl} className="mt-2 inline-block text-gold underline">Open the phone preview</a>}
             </div>
           </div>
         ) : (
           <div className="overflow-hidden rounded-lg border border-line bg-s2">
             <div className="relative h-[clamp(15rem,54dvh,29rem)] bg-[radial-gradient(ellipse_at_50%_40%,var(--s3)_0%,var(--s2)_52%,var(--canvas)_100%)]">
-              {mode === "camera" && !camError && (
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="absolute inset-0 size-full object-cover"
-                />
-              )}
-              <ModelViewerPanel
-                mask={mask}
-                previewMode={mode}
-                className="size-full"
-              />
+              <ModelViewerPanel mask={mask} wallPreview className="size-full" />
             </div>
-            {mode === "camera" && camError && (
-              <div role="status" className="flex items-center gap-2 border-t border-line px-4 py-2 text-xs text-ink2">
-                <CameraOff className="size-4 shrink-0 text-gold" aria-hidden="true" />
-                <span>{camError}</span>
-              </div>
-            )}
             <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t border-line px-4 py-3 text-xs">
               <div className="inline-flex items-center gap-2 text-ink2">
                 <Ruler className="size-4 shrink-0 text-gold" aria-hidden="true" />

@@ -46,6 +46,10 @@ import type {
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 
+export function mediaStreamUrl(key: string) {
+  return `${API_BASE}/api/media/stream/${key.split("/").map(encodeURIComponent).join("/")}`;
+}
+
 const liveMaskCache = new Map<string, Mask>();
 
 function recordMasks(list: Mask | Mask[] | undefined | null) {
@@ -506,7 +510,7 @@ export const api = {
     const key = data.asset?.key || `models/${maskSlug}.glb`;
     return {
       key,
-      src: `/api/media/stream/${key}?t=${Date.now()}`,
+      src: `${mediaStreamUrl(key)}?t=${Date.now()}`,
     };
   },
 };
