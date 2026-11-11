@@ -166,7 +166,7 @@ export function MaskCreateForm({
       setScanStreamUrl(result.src);
       setScanning(false);
 
-      toast("3D model generated from photo (256 resolution)", {
+      toast("3D model generated from photo (High-fidelity mesh)", {
         description: "Laplacian smoothing and studio lighting applied. Interactive preview ready.",
         kind: "success",
       });
@@ -582,7 +582,7 @@ export function MaskCreateForm({
               ) : (
                 <>
                   <Wand2 className="size-4 text-gold" />
-                  Generate 3D Model (TripoSR 256)
+                  Generate 3D Model (TripoSR AI)
                 </>
               )}
             </Button>

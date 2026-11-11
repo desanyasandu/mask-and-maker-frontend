@@ -492,7 +492,7 @@ export const api = {
     const form = new FormData();
     form.append("maskSlug", maskSlug);
     form.append("artisanSlug", artisanSlug);
-    form.append("mc_resolution", "256");
+    form.append("mc_resolution", "192");
     form.append("smooth_mesh", "true");
     form.append("orientation_fix", "true");
     form.append("image", imageFile, imageFile instanceof File ? imageFile.name : `${maskSlug}.jpg`);
