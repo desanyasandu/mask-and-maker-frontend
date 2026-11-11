@@ -417,8 +417,9 @@ export const api = {
     }
   },
 
-  async listOrders(): Promise<Order[]> {
-    const data = await requestJson<{ orders?: Order[] } | Order[]>("/api/orders");
+  async listOrders(email?: string): Promise<Order[]> {
+    const qs = email ? `?email=${encodeURIComponent(email)}` : "";
+    const data = await requestJson<{ orders?: Order[] } | Order[]>(`/api/orders${qs}`);
     if (Array.isArray(data)) return data;
     return Array.isArray(data?.orders) ? data.orders : [];
   },

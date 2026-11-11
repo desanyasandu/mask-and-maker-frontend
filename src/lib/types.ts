@@ -148,6 +148,19 @@ export interface OrderEvent {
   done: boolean;
 }
 
+export interface OrderShippingAddress {
+  fullName?: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  addressLine?: string;
+  line1?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+}
+
 export interface Order {
   id: string;
   placedAt: string;
@@ -155,6 +168,8 @@ export interface Order {
   items: OrderItem[];
   totalLKR: number;
   events: OrderEvent[];
+  customerEmail?: string;
+  shippingAddress?: OrderShippingAddress;
 }
 
 export interface CraftStage {

@@ -41,13 +41,50 @@ export default function Account() {
   const doSignOut = useSignOut();
 
   useEffect(() => {
-    api.listOrders().then(setOrderList).catch(() => setOrderList([]));
+    if (!user?.email) {
+      setOrderList([]);
+      return;
+    }
+    api.listOrders(user.email)
+      .then((orders) => {
+        // Strictly filter to orders belonging to this user
+        const userOrders = orders.filter(
+          (o) =>
+            o.customerEmail?.toLowerCase() === user.email.toLowerCase() ||
+            o.shippingAddress?.email?.toLowerCase() === user.email.toLowerCase()
+        );
+        setOrderList(userOrders);
+      })
+      .catch(() => setOrderList([]));
+
     api.listMasks().then(setMasksList).catch(() => {});
     api.listCertificates().then(setCertList).catch(() => {});
-  }, []);
+  }, [user?.email, user?.name]);
 
-  const claimedCerts = certList.filter((c) => c.status === "claimed");
+  const claimedCerts = certList.filter(
+    (c) =>
+      c.status === "claimed" &&
+      (c.owner?.toLowerCase() === user?.name?.toLowerCase() ||
+        (user?.email && c.owner?.toLowerCase() === user?.email.toLowerCase()))
+  );
   const piecesKept = orderList ? orderList.reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.qty, 0), 0) : 0;
+
+  const savedAddresses = (orderList || [])
+    .filter((o) => o.shippingAddress && (o.shippingAddress.addressLine || (o.shippingAddress as any).line1 || o.shippingAddress.city))
+    .reduce<Array<{ label: string; name: string; lines: string[] }>>((acc, o) => {
+      const addr = o.shippingAddress as any;
+      const line1 = addr.addressLine || addr.line1 || "";
+      const cityCountry = [addr.city, addr.postalCode, addr.country || "Sri Lanka"].filter(Boolean).join(", ");
+      const fullName = addr.fullName || addr.name || user.name;
+      if (!acc.some((a) => a.lines[0] === line1 && a.lines[1] === cityCountry)) {
+        acc.push({
+          label: acc.length === 0 ? "Default Shipping" : `Order #${o.id.slice(-4)}`,
+          name: fullName,
+          lines: [line1, cityCountry].filter(Boolean),
+        });
+      }
+      return acc;
+    }, []);
 
   return (
     <div className="mx-auto max-w-7xl px-4 pt-10 sm:px-6">
@@ -95,6 +132,14 @@ export default function Account() {
         <div className="mt-8 space-y-4">
           {!orderList ? (
             Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-32" />)
+          ) : orderList.length === 0 ? (
+            <EmptyState
+              photo={photos.masksWall}
+              title="No orders yet"
+              body="When you acquire a hand-carved mask from the catalog, its courier timeline, provenance pack, and live fulfillment status will appear here."
+            >
+              <ButtonLink to="/masks">Explore the collection</ButtonLink>
+            </EmptyState>
           ) : (
             orderList.map((o) => (
               <section key={o.id} className="edge rounded-lg bg-s1 p-6" aria-label={`Order ${o.id}`}>
@@ -204,23 +249,31 @@ export default function Account() {
       {/* addresses */}
       {tab === "addresses" && (
         <div className="mt-8 grid gap-4 sm:grid-cols-2">
-          {[
-            { label: "Home", name: "Ruwin Jayasuriya", lines: ["14/2 Galle Road, Apt 3", "Colombo 00700, Sri Lanka"] },
-            { label: "Office", name: "R. Jayasuriya", lines: ["Level 4, Trace City", "Maradana, Colombo 01000"] },
-          ].map((a) => (
-            <div key={a.label} className="edge rounded-lg bg-s1 p-5">
-              <p className="flex items-center gap-2 text-[12.5px] font-medium  text-ink3">
-                <BookUser className="size-3.5 text-gold" aria-hidden="true" />
-                {a.label}
-              </p>
-              <p className="mt-3 text-sm font-medium text-ink">{a.name}</p>
-              <p className="mt-1 text-sm leading-relaxed text-ink2">
-                {a.lines[0]}
-                <br />
-                {a.lines[1]}
-              </p>
+          {savedAddresses.length > 0 ? (
+            savedAddresses.map((a) => (
+              <div key={a.label} className="edge rounded-lg bg-s1 p-5">
+                <p className="flex items-center gap-2 text-[12.5px] font-medium text-ink3">
+                  <BookUser className="size-3.5 text-gold" aria-hidden="true" />
+                  {a.label}
+                </p>
+                <p className="mt-3 text-sm font-medium text-ink">{a.name}</p>
+                <p className="mt-1 text-sm leading-relaxed text-ink2">
+                  {a.lines[0]}
+                  {a.lines[1] && (
+                    <>
+                      <br />
+                      {a.lines[1]}
+                    </>
+                  )}
+                </p>
+              </div>
+            ))
+          ) : (
+            <div className="edge rounded-lg bg-s1 p-5 text-sm text-ink3">
+              <p className="font-medium text-ink">No saved addresses</p>
+              <p className="mt-1 text-ink2">Addresses used during checkout will automatically be saved to your profile.</p>
             </div>
-          ))}
+          )}
           <AddAddressButton />
         </div>
       )}
