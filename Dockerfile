@@ -13,6 +13,7 @@ RUN npm ci
 COPY index.html vite.config.ts tsconfig.json ./
 COPY public ./public
 COPY src ./src
+COPY scripts/build-quick-look.mjs ./scripts/build-quick-look.mjs
 
 # Optional build-time API gateway URL (defaults to relative /api path for reverse proxy / Ingress)
 ARG VITE_API_BASE_URL=""

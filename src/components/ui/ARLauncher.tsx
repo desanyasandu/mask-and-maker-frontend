@@ -3,6 +3,7 @@ import { Loader2, Mouse, QrCode, RefreshCw, RotateCcw, Ruler, ScanLine, Smartpho
 import QRCode from "qrcode";
 import { useEffect, useRef, useState } from "react";
 import { api, mediaStreamUrl } from "@/lib/mock/api";
+import refinedScans from "@/lib/refined-scans.json";
 import type { Mask } from "@/lib/types";
 import { cn } from "@/utils/cn";
 import { Button, Modal } from "./kit";
@@ -13,13 +14,7 @@ const WALL_ORBIT = "0deg 90deg 102%";
 // Legacy streamed catalog scans are Z-up and face +X.
 const CATALOG_ORIENTATION = "0deg -90deg -90deg";
 // These bundled scans have been matched to the corresponding studio photographs.
-const REFINED_SCANS = new Set([
-  "gini-raksha",
-  "maha-kola-sanniya",
-  "mudali-the-nobleman",
-  "naga-raja-kolam",
-  "naga-raksha",
-]);
+const REFINED_SCANS = new Set(refinedScans);
 
 const previewModes = [
   { id: "wall", label: "Wall preview", Icon: Ruler },
@@ -33,6 +28,27 @@ function mobileARPlatform() {
     return "ios";
   }
   return null;
+}
+
+function bundledQuickLookUrl(slug: string) {
+  if (!import.meta.env.PROD || !REFINED_SCANS.has(slug)) return undefined;
+  return `/models/${encodeURIComponent(slug)}.usdz`;
+}
+
+function QuickLookLink({ href, mask, className }: { href: string; mask: Mask; className?: string }) {
+  return (
+    <a
+      rel="ar"
+      href={href}
+      aria-label="View in AR"
+      className={cn(
+        "inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-gold px-5 text-sm font-medium text-on-gold shadow-md hover:bg-gold-strong after:content-[attr(aria-label)]",
+        className,
+      )}
+    >
+      <img src={mask.image || "/favicon.svg"} alt="" className="size-6 rounded-full object-cover" />
+    </a>
+  );
 }
 
 function useModelViewerLib() {
@@ -133,7 +149,8 @@ export function ModelViewerPanel({
   const [arError, setARError] = useState<string | null>(null);
   const viewerRef = useRef<ModelViewerElement | null>(null);
   const platform = mobileARPlatform();
-  const secureAR = window.location.protocol === "https:";
+  // iOS hands off to the native viewer. Android WebXR runs in the page.
+  const canRequestAR = platform === "ios" || (platform === "android" && window.isSecureContext);
 
   useEffect(() => {
     setSkipRefinedScan(false);
@@ -142,6 +159,8 @@ export function ModelViewerPanel({
   }, [mask.slug, customSrc]);
 
   const useRefinedScan = !customSrc && !generatedSrc && !skipRefinedScan && REFINED_SCANS.has(mask.slug);
+  const iosSrc = platform === "ios" && useRefinedScan ? bundledQuickLookUrl(mask.slug) : undefined;
+  const nativeQuickLook = iosSrc && document.createElement("a").relList.supports("ar");
   const activeSrc =
     customSrc ||
     generatedSrc ||
@@ -259,8 +278,9 @@ export function ModelViewerPanel({
         camera-orbit={wallPreview ? WALL_ORBIT : "0deg 75deg 105%"}
         interaction-prompt={wallPreview ? "none" : undefined}
         touch-action="pan-y"
-        ar={Boolean(platform && secureAR)}
-        ar-modes={platform === "ios" ? "quick-look" : "webxr scene-viewer"}
+        ar={canRequestAR}
+        ar-modes={platform === "ios" ? "quick-look" : window.location.protocol === "https:" ? "webxr scene-viewer" : "webxr"}
+        ios-src={iosSrc}
         ar-placement="wall"
         shadow-intensity={wallPreview ? 0 : 0.85}
         shadow-softness="0.75"
@@ -285,9 +305,11 @@ export function ModelViewerPanel({
           <Loader2 className="size-6 animate-spin text-gold" aria-hidden="true" />
         </div>
       )}
-      {platform && status === "idle" && (
+      {platform && (nativeQuickLook || status === "idle") && (
         <div className="absolute inset-x-3 bottom-3 flex flex-col items-center gap-2">
-          {secureAR && (
+          {nativeQuickLook ? (
+            <QuickLookLink href={iosSrc} mask={mask} />
+          ) : canRequestAR && (
             <Button type="button" onClick={openAR} disabled={launchingAR} className="min-h-11 shadow-md">
               {launchingAR
                 ? <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -295,7 +317,7 @@ export function ModelViewerPanel({
               {launchingAR ? "Opening AR…" : "View on your wall in AR"}
             </Button>
           )}
-          {(arError || !secureAR) && (
+          {!nativeQuickLook && (arError || !canRequestAR) && (
             <p role="status" className="max-w-sm rounded-lg bg-s1 px-3 py-2 text-center text-xs text-ink">
               {arError || "Open this page over HTTPS to use AR."}
             </p>
@@ -313,6 +335,9 @@ export function ARLauncher({ mask }: { mask: Mask }) {
   const [qr, setQr] = useState<string | null>(null);
   const [qrFailed, setQrFailed] = useState(false);
   const platform = mobileARPlatform();
+  const quickLookUrl = platform === "ios" && document.createElement("a").relList.supports("ar")
+    ? bundledQuickLookUrl(mask.slug)
+    : undefined;
   const phoneUrl = new URL(`/masks/${encodeURIComponent(mask.slug)}?ar=1`, window.location.origin).href;
 
   useEffect(() => {
@@ -332,13 +357,17 @@ export function ARLauncher({ mask }: { mask: Mask }) {
 
   return (
     <>
-      <Button variant="outline" size="lg" className="w-full justify-center" onClick={() => {
-        setMode("wall");
-        setViewerOpen(true);
-      }}>
-        <ScanLine className="size-4 text-gold" aria-hidden="true" />
-        {platform ? "Preview on your wall in AR" : "View on your wall in 3D"}
-      </Button>
+      {quickLookUrl ? (
+        <QuickLookLink href={quickLookUrl} mask={mask} className="h-12 w-full" />
+      ) : (
+        <Button variant="outline" size="lg" className="w-full justify-center" onClick={() => {
+          setMode("wall");
+          setViewerOpen(true);
+        }}>
+          <ScanLine className="size-4 text-gold" aria-hidden="true" />
+          {platform ? "Preview on your wall in AR" : "View on your wall in 3D"}
+        </Button>
+      )}
 
       <Modal open={viewerOpen} onClose={() => setViewerOpen(false)} title={`${mask.name} · Wall preview`} maxWidth="max-w-4xl">
         {!platform && (
@@ -378,7 +407,7 @@ export function ARLauncher({ mask }: { mask: Mask }) {
                 {qrFailed ? "Open on your phone" : "Scan with your phone camera"}
               </p>
               <p className="mt-1.5">
-                Tap “View on your wall in AR” on your phone to place the mask.
+                Open this mask on your phone, then tap the AR button.
               </p>
               {qrFailed && <a href={phoneUrl} className="mt-2 inline-block text-gold underline">Open the phone preview</a>}
             </div>

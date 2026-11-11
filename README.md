@@ -62,8 +62,11 @@ Replace the function bodies with `fetch` calls; the UI needs no changes.
   `image` field in `data.ts`. Masks without photos render a seeded **archive plate** (SVG
   line-drawing) so the catalog always looks intentional.
 - **3D models** — the viewer uses the media service or a matching scan bundled in `public/models/`.
-  To add a bundled scan, save an upright `{slug}.glb` and add the slug to `REFINED_SCANS` in
-  `ARLauncher.tsx` after checking it against the listing. Both the *3D study* and phone AR use that scan.
+  To add a bundled scan, save an upright `{slug}.glb` and add the slug to
+  `src/lib/refined-scans.json` after checking it against the listing. The production build
+  exports these scans to USDZ for Safari Quick Look.
+- **Android AR** — serve the deployed site and its model URLs over HTTPS. Terminate TLS
+  on the public load balancer using a certificate for the site's domain.
 
 ## Design system
 
