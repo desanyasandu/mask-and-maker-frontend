@@ -100,7 +100,7 @@ export default function Home() {
             <Stagger className="my-auto">
               <StaggerItem>
                 <h1 className="font-display text-[42px] leading-[1] font-light tracking-[-0.03em] text-balance text-ink sm:text-[64px] lg:text-[clamp(56px,6vw,100px)]">
-                  Carved from one plank of Wood.
+                  Carved from one plank of tree.
                 </h1>
               </StaggerItem>
               <StaggerItem>
